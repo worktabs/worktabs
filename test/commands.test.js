@@ -22,7 +22,9 @@ test('local commands preserve stdin, cwd, environment, timeout, and hidden Windo
   assert.equal(options.windowsHide, true);
   assert.equal(options.maxBuffer, 16 * 1024 * 1024);
   assert.equal(options.env.WORKTABS_COMMAND_TEST, 'value');
-  assert.equal(options.env.PATH, process.env.PATH);
+  // Windows names it Path, and a copy of process.env no longer finds it as PATH.
+  const pathKey = Object.keys(options.env).find((key) => key.toUpperCase() === 'PATH');
+  assert.equal(options.env[pathKey], process.env.PATH);
 });
 
 test('real local commands receive stdin and run from the requested directory', async (t) => {
