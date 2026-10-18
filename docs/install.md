@@ -4,8 +4,6 @@
 
 Get the installer or the zip for Windows, or the zip for macOS, from [Releases](https://github.com/worktabs/worktabs/releases). You can also build from source ("Building from source" below).
 
-- The Actions budget is used up for now, so versions from 0.3.0 on are not published on Releases. Locally built zips and installers are handed out instead ([releasing.md](releasing.md#build-locally-and-hand-out-for-now)).
-
 ## Requirements
 
 - Windows 11 or macOS (tested on Windows 11 and macOS 26.5 (Apple Silicon))

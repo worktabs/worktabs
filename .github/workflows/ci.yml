@@ -1,7 +1,7 @@
 name: CI
 
 # A push to main that changes these documents alone runs nothing: no test reads them, and none is
-# packaged. Every pull request runs, since main takes only pull requests whose Test check passed.
+# packaged. Every pull request runs, since main takes only pull requests whose Test checks passed.
 on:
   push:
     branches: [main]
@@ -26,10 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu only for now: the month's Actions budget ran out (October 2026), and Windows
-        # minutes cost close to twice Ubuntu's. Put windows-latest back to test and pack on it
-        # again; the nightly macOS run is disabled meanwhile (gh workflow enable "CI (macOS)").
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     # Each takes a few minutes. Without this a test that never ends runs for GitHub's 6 hours,
     # which macOS once did (3,600 minutes billed).

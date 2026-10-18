@@ -81,12 +81,12 @@ GitHub settings (Settings → General → Pull Requests):
 - Allow merge commits: on (for the exception above)
 - Allow rebase merging: off
 
-Branch rules (Settings → Rules → Rulesets, "main"): main takes changes only through pull requests, and only when their `Test (ubuntu-latest)` check passed. It cannot be deleted or force-pushed.
+Branch rules (Settings → Rules → Rulesets, "main"): main takes changes only through pull requests, and only when their `Test (ubuntu-latest)` and `Test (windows-latest)` checks passed. It cannot be deleted or force-pushed.
 
 ## 5. Releases
 
 - A `v*` tag marks "everything up to here has been distributed". When changes pile up on main and the maintainer decides to distribute them, they become one version. The version is not bumped per commit.
-- The maintainer runs `npm version <patch|minor>` on main. This rebuilds `CHANGELOG.md` and creates the release commit and tag. The CHANGELOG is not written by hand.
+- The maintainer runs `npm version <patch|minor>` on a branch, which rebuilds `CHANGELOG.md`, merges it as a pull request titled `chore(release): v<version>`, and pushes the tag on the merged commit. The CHANGELOG is not written by hand.
 - `npm run changelog` shows the changes not yet released.
 
 The steps are in [docs/releasing.md](../docs/releasing.md).

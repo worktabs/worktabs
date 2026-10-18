@@ -2,9 +2,7 @@
 
 [English](../releasing.md) | **日本語**
 
-`npm version` で版を上げてタグを付け、push すると、GitHub Actions（`.github/workflows/release.yml`）がそのコミットから Windows のインストーラーと zip、macOS の zip を作り、GitHub Releases に出します。誰がどのコードから作ったものかが分かるように、配るものはローカルでは作りません。
-
-ただし、いまは Actions の予算を使い切っているので、タグを push せずに、配るものを手元で作っています（下記「[いまは手元でビルドして配る](#いまは手元でビルドして配る)」）。
+版のタグを push すると、GitHub Actions（`.github/workflows/release.yml`）がタグのコミットから Windows のインストーラーと zip、macOS の zip を作り、GitHub Releases に出します。誰がどのコードから作ったものかが分かるように、配るものはローカルでは作りません。
 
 コミットの接頭辞の決まりは [CONTRIBUTING.md](../../.github/CONTRIBUTING.md)（英語）にあります。リリースノートは、その接頭辞から作ります。
 
@@ -17,6 +15,8 @@
 
 ## リリースする
 
+main は PR を通した変更しか受け付けないので、リリースのコミットも PR を通し、マージしてから main にタグを付けます。
+
 1. main を最新にします。
    ```sh
    git switch main
@@ -25,50 +25,30 @@
    npm run changelog   # （任意）まだリリースしていない分を見る
    npm run pack        # （任意）main のビルドを npm run try で確かめる（install.md の「自分でビルドした Worktabs を更新する」）
    ```
-2. 版を上げます。
+2. ブランチで版を上げます。
    ```sh
-   npm version minor   # 0.1.0 → 0.2.0。修正だけなら patch
+   git switch -c release/v0.6.0
+   npm version minor   # 0.5.0 → 0.6.0。修正だけなら patch
+   git commit -am "chore(release): v0.6.0"
    ```
-   `npm version` は、次のことを続けて行います。作業ツリーに変更が残っていると止まります。
-   - `package.json` と `package-lock.json` の `version` を上げる
-   - `CHANGELOG.md` を git-cliff で作り直す（`scripts/changelog.js`。設定は `cliff.toml`）
-   - `chore(release): v0.2.0` でコミットし（メッセージは `.npmrc`）、`v0.2.0` のタグを付ける
-3. push します。main に直接 push するのは、このときだけです。
+   `npm version` は、`package.json` と `package-lock.json` の `version` を上げ、`CHANGELOG.md` を git-cliff で作り直します（`scripts/changelog.js`。設定は `cliff.toml`）。コミットもタグも作りません（`.npmrc`）。作業ツリーも確かめないので、変更のない状態から始めます。`git commit -am` は、変更をすべてコミットするためです。
+3. そのタイトルで PR を作り、チェックが通ったら squash merge します。`cliff.toml` は、`chore(release)` のタイトルを `CHANGELOG.md` に入れません。タグを push するまで、ほかの PR はマージしません。タグを付けるコミットの CHANGELOG が、そのコミットの中身と合うようにするためです。
    ```sh
-   git push --follow-tags
+   git push -u origin release/v0.6.0
+   gh pr create --fill
+   gh pr merge --squash --delete-branch   # チェックが通ってから
    ```
-4. Actions の「Release」が終わると、Releases に出ます。タグを push したらすぐに配られるので、確かめることは手順 1 で済ませておきます。
+4. main のマージしたコミットにタグを付けて、タグを push します。
+   ```sh
+   git switch main
+   git pull
+   git tag v0.6.0
+   git push origin v0.6.0
+   ```
+5. Actions の「Release」が終わると、Releases に出ます。タグを push したらすぐに配られるので、確かめることは手順 1 で済ませておきます。
 
-- リポジトリは公開のときに 1 つのコミットから始め直したので、CHANGELOG とタグもそこから始まります。0.3.1 までの版は公開していません。
+- リポジトリは公開のときに 1 つのコミットから始め直したので、CHANGELOG とタグもそこから始まります。0.4.0 までの版は公開していません。
 - `CHANGELOG.md` は、リリースのたびにすべての履歴から作り直すので、手で直しても次のリリースで消えます。直すのは、コミットのメッセージ（squash merge では PR のタイトル）の方です。
-
-## いまは手元でビルドして配る
-
-2026 年 10 月に Actions の予算を使い切ったので、0.3.0 からは、タグを push せずに、Windows の zip とインストーラーを手元で作って渡しています。予算が戻ったら、上の「リリースする」に戻します。
-
-1. main を最新にし（「リリースする」の手順 1）、`npm run check` と `npm test` を通します。Windows の CI を止めているので、手元で確かめてから作ります。
-2. `npm version minor`（修正だけなら `patch`）で版を上げます。リリースのコミットとタグは、いつもどおり作られます。
-3. main だけを push します。ほかの端末でも、いまの版が分かるようにするためです。タグは push しません。push すると Release のワークフローが動くためです。
-   ```sh
-   git push origin main
-   ```
-   - `package.json` が変わるので、main への push で Ubuntu の CI が 1 回動きます。
-4. 作ります。
-   ```sh
-   npm run pack          # dist/win-unpacked
-   npm run dist:packed   # dist/Worktabs-<版>-win.zip と dist/Worktabs-<版>-setup.exe
-   ```
-   - 自分の Worktabs は、`dist\win-unpacked` から `update-worktabs.cmd` で更新します（[install.md](install.md#自分でビルドした-worktabs-を更新する)）。配るものと同じ中身です。
-5. 渡すときは、SHA-256 とリリースノートを添えます。
-   ```powershell
-   Get-FileHash dist\Worktabs-0.3.0-win.zip
-   node scripts/release-notes.js v0.3.0
-   ```
-
-- タグは、版を上げた端末にだけあります。次の版も同じ端末で上げます。git-cliff はタグで CHANGELOG の版を区切るので、タグのない端末で `npm version` を実行すると、前の版のコミットも新しい版にまとめて入ります。
-- macOS の zip は作っていません。要るときは、mac の実機で `npm run dist:mac` を実行します。
-- Windows のファイルは署名していないので、受け取った人が初めて起動すると、SmartScreen の警告が出ます（下記「署名」）。
-- 予算が戻ったら、手元のタグを push すると、Release のワークフローがその版を Releases に出します。手元で配ったものと同じコミットから作り直すので、中身は同じですが、SHA-256 は変わります。タグごとに Release が動くので、出すのは最新の版だけでも構いません。
 
 ## Release のワークフローがすること
 
@@ -92,14 +72,10 @@ node scripts/release-notes.js v0.2.0
 ## 失敗したとき
 
 - ワークフローが途中で失敗したときは、原因を取り除いてから、Actions で Re-run します。gh はファイルをすべて上げ終えてからリリースを公開し、上げるのに失敗したら途中のリリースを消すので、そのまま作り直せます。
-- ビルドやテストが失敗して、コードを直す必要があるときは、タグを消し、直した main で同じ版をもう一度付けます。
+- ビルドやテストが失敗して、コードを直す必要があるときは、タグを消し、直す PR をマージしてから、同じ版をもう一度リリースします。「リリースする」の手順 2〜4 を、`npm version 0.6.0 --allow-same-version` で行います。CHANGELOG に直した分も入れるためです。
   ```sh
-  git push origin :refs/tags/v0.2.0
-  git tag -d v0.2.0
-  # 直す PR を main にマージしてから
-  git switch main && git pull
-  npm version 0.2.0 --allow-same-version
-  git push --follow-tags
+  git push origin :refs/tags/v0.6.0
+  git tag -d v0.6.0
   ```
 - 出したあとで問題が見つかったときは、直して次の patch を出します。出した版のタグは付け直しません。配ったものと、タグのコードが食い違うためです。
 

@@ -4,8 +4,6 @@
 
 [Releases](https://github.com/worktabs/worktabs/releases) から、Windows はインストーラーか zip を、macOS は zip を取ります。ソースからビルドすることもできます（下記「ソースからビルドする」）。
 
-- いまは Actions の予算を使い切っているので、0.3.0 からの版は Releases に出していません。手元で作った zip とインストーラーを渡しています（[releasing.md](releasing.md#いまは手元でビルドして配る)）。
-
 ## 必要なもの
 
 - Windows 11、または macOS（確認したのは Windows 11 と macOS 26.5（Apple Silicon））

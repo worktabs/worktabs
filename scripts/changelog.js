@@ -1,6 +1,6 @@
 // Writes CHANGELOG.md with git-cliff (settings in cliff.toml), taking the version in package.json
-// as released. `npm version` runs it after raising the version and before its commit, so the
-// release commit and its tag carry the CHANGELOG.md that the release notes are taken from.
+// as released. `npm version` runs it after raising the version, so the release commit, and the tag
+// put on it once merged, carry the CHANGELOG.md that the release notes are taken from.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');

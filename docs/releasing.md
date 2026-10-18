@@ -2,9 +2,7 @@
 
 **English** | [日本語](ja/releasing.md)
 
-When you bump the version and tag it with `npm version` and push, GitHub Actions (`.github/workflows/release.yml`) builds the Windows installer and zip and the macOS zip from that commit and publishes them to GitHub Releases. Release files are not built locally, so that it is clear who built them and from which code.
-
-For now, though, the Actions budget is used up, so tags are not pushed and the release files are built locally (see "[Build locally and hand out for now](#build-locally-and-hand-out-for-now)" below).
+When a version tag is pushed, GitHub Actions (`.github/workflows/release.yml`) builds the Windows installer and zip and the macOS zip from the tagged commit and publishes them to GitHub Releases. Release files are not built locally, so that it is clear who built them and from which code.
 
 The rules for commit prefixes are in [CONTRIBUTING.md](../.github/CONTRIBUTING.md). Release notes are made from those prefixes.
 
@@ -17,6 +15,8 @@ The rules for commit prefixes are in [CONTRIBUTING.md](../.github/CONTRIBUTING.m
 
 ## Releasing
 
+main takes changes only through pull requests, so the release commit goes through one too, and the tag is put on main once it is merged.
+
 1. Update main.
    ```sh
    git switch main
@@ -25,50 +25,30 @@ The rules for commit prefixes are in [CONTRIBUTING.md](../.github/CONTRIBUTING.m
    npm run changelog   # (optional) see what has not been released yet
    npm run pack        # (optional) check the main build with npm run try ("Updating your own build of Worktabs" in install.md)
    ```
-2. Bump the version.
+2. Bump the version on a branch.
    ```sh
-   npm version minor   # 0.1.0 → 0.2.0. Use patch for fixes only
+   git switch -c release/v0.6.0
+   npm version minor   # 0.5.0 → 0.6.0. Use patch for fixes only
+   git commit -am "chore(release): v0.6.0"
    ```
-   `npm version` does the following in sequence. It stops if the working tree has uncommitted changes.
-   - Bumps `version` in `package.json` and `package-lock.json`
-   - Regenerates `CHANGELOG.md` with git-cliff (`scripts/changelog.js`, configured in `cliff.toml`)
-   - Commits as `chore(release): v0.2.0` (the message is set in `.npmrc`) and tags `v0.2.0`
-3. Push. This is the only time you push directly to main.
+   `npm version` bumps `version` in `package.json` and `package-lock.json`, and regenerates `CHANGELOG.md` with git-cliff (`scripts/changelog.js`, configured in `cliff.toml`). It neither commits nor tags (`.npmrc`), and it does not check the working tree, so start from a clean one: `git commit -am` takes every change.
+3. Open a pull request with that title, and squash-merge it once its checks pass. `cliff.toml` leaves the `chore(release)` title out of `CHANGELOG.md`. Merge nothing else until the tag is pushed, so that the tagged commit has the CHANGELOG of what it contains.
    ```sh
-   git push --follow-tags
+   git push -u origin release/v0.6.0
+   gh pr create --fill
+   gh pr merge --squash --delete-branch   # once the checks pass
    ```
-4. When the "Release" workflow in Actions finishes, the release appears in Releases. It goes out as soon as the tag is pushed, so do your checks in step 1.
+4. Tag the merged commit on main and push the tag.
+   ```sh
+   git switch main
+   git pull
+   git tag v0.6.0
+   git push origin v0.6.0
+   ```
+5. When the "Release" workflow in Actions finishes, the release appears in Releases. It goes out as soon as the tag is pushed, so do your checks in step 1.
 
-- The repository started over with a single commit when it was made public, so the CHANGELOG and the tags begin there. The versions up to 0.3.1 were not public.
+- The repository started over with a single commit when it was made public, so the CHANGELOG and the tags begin there. The versions up to 0.4.0 were not public.
 - `CHANGELOG.md` is regenerated from the full history on every release, so hand edits are lost at the next release. Fix the commit messages instead (with squash merge, the PR titles).
-
-## Build locally and hand out for now
-
-The Actions budget ran out in October 2026, so from 0.3.0 on, tags are not pushed, and the Windows zip and installer are built locally and handed out. When the budget comes back, go back to "Releasing" above.
-
-1. Update main (step 1 of "Releasing") and pass `npm run check` and `npm test`. The Windows CI is stopped, so check locally before building.
-2. Bump the version with `npm version minor` (`patch` for fixes only). The release commit and tag are created as usual.
-3. Push only main, so that other machines can see the current version. Do not push the tag, because pushing it runs the Release workflow.
-   ```sh
-   git push origin main
-   ```
-   - `package.json` changes, so the push to main runs the Ubuntu CI once.
-4. Build.
-   ```sh
-   npm run pack          # dist/win-unpacked
-   npm run dist:packed   # dist/Worktabs-<version>-win.zip and dist/Worktabs-<version>-setup.exe
-   ```
-   - Update your own Worktabs from `dist\win-unpacked` with `update-worktabs.cmd` ([install.md](install.md#updating-your-own-build-of-worktabs)). It has the same contents as the files you hand out.
-5. When handing them out, include the SHA-256 and the release notes.
-   ```powershell
-   Get-FileHash dist\Worktabs-0.3.0-win.zip
-   node scripts/release-notes.js v0.3.0
-   ```
-
-- The tag exists only on the machine that bumped the version. Bump the next version on the same machine. git-cliff splits CHANGELOG versions by tag, so if you run `npm version` on a machine without the tag, the commits of the previous version also go into the new version.
-- The macOS zip is not built. When you need it, run `npm run dist:mac` on a real Mac.
-- The Windows files are not signed, so recipients see a SmartScreen warning on first launch (see "Signing" below).
-- When the budget comes back, push the local tag and the Release workflow publishes that version to Releases. It rebuilds from the same commit as the files handed out locally, so the contents are the same, but the SHA-256 differs. Release runs for each tag, so publishing only the latest version is fine.
 
 ## What the Release workflow does
 
@@ -92,14 +72,10 @@ The workflow runs only on tags. `scripts/release-notes.js` and `cliff.toml` are 
 ## When it fails
 
 - If the workflow fails partway, remove the cause and Re-run it in Actions. gh publishes the release only after uploading all files, and deletes the partial release if an upload fails, so you can simply build it again.
-- If the build or tests fail and the code needs a fix, delete the tag and tag the same version again on the fixed main.
+- If the build or tests fail and the code needs a fix, delete the tag, merge the fix, and release the same version again: steps 2 to 4 of "Releasing", with `npm version 0.6.0 --allow-same-version` so that the CHANGELOG takes in the fix.
   ```sh
-  git push origin :refs/tags/v0.2.0
-  git tag -d v0.2.0
-  # after merging the fix PR into main
-  git switch main && git pull
-  npm version 0.2.0 --allow-same-version
-  git push --follow-tags
+  git push origin :refs/tags/v0.6.0
+  git tag -d v0.6.0
   ```
 - If you find a problem after the release is out, fix it and release the next patch. Do not re-tag a released version, because the files handed out and the code at the tag would disagree.
 

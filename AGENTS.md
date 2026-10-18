@@ -101,11 +101,9 @@ npm run coverage  # unit tests with coverage; fails below the thresholds in pack
 - Write what can only be checked on a real machine in the PR as checklists under "To verify on Windows" and "To verify on mac".
 - Tests that use git create a real repository in a temporary folder with `makeRepo` in `test/support.js`. Write them so they pass on Windows too (build paths with `path`).
 - CI (`.github/workflows/ci.yml`): `npm run check` on Ubuntu and Windows, `npm run coverage` on Ubuntu and `npm test` on Windows, `npm run lint`, `npm run typecheck`, and `npm audit --omit=dev --audit-level=high` on Ubuntu, `npm run smoke` on Ubuntu, and `npm run pack` on Windows. Every pull request runs it, because main requires its check to pass; a push to main that changes only documentation (docs/ and .md files such as the README) does not.
-  - For now, because of the Actions budget, the Windows and macOS CI are stopped and only Ubuntu runs (docs/development.md). Run the Windows and macOS tests locally before merging.
 - Dependabot (`.github/dependabot.yml`) opens a pull request a week for the npm packages' minor and patch updates and one for the GitHub Actions; each major update comes on its own. Run a major Electron update on Windows and macOS before merging it.
 - macOS CI (`.github/workflows/mac.yml`): `npm run check`, `npm test`, `npm run pack:mac`. macOS minutes cost 10 times as much, so it does not run on push; it runs every night, only when the head of main has not been checked on macOS yet. For a PR that touches the mac side, run it by hand with `gh workflow run mac.yml --ref <branch>`.
-- Release (`.github/workflows/release.yml`): pushing a `v*` tag builds the Windows installer and zip and the macOS zip, and publishes them on GitHub Releases. The release notes come from `CHANGELOG.md`. The steps are in docs/releasing.md.
-  - For now, because of the Actions budget, tags are not pushed; the Windows zip and installer are built locally and handed out. After bumping the version, push only main, and keep the tag only on the machine that bumped it ("Build locally and hand out for now" in docs/releasing.md).
+- Release (`.github/workflows/release.yml`): pushing a `v*` tag builds the Windows installer and zip and the macOS zip, and publishes them on GitHub Releases. The release notes come from `CHANGELOG.md`. The release commit goes through a pull request like any other change, and the tag is pushed once it is merged; the steps are in docs/releasing.md.
 
 ## Rules
 
