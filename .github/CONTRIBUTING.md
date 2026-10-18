@@ -81,6 +81,8 @@ GitHub settings (Settings → General → Pull Requests):
 - Allow merge commits: on (for the exception above)
 - Allow rebase merging: off
 
+Branch rules (Settings → Rules → Rulesets, "main"): main takes changes only through pull requests, and only when their `Test (ubuntu-latest)` check passed. It cannot be deleted or force-pushed.
+
 ## 5. Releases
 
 - A `v*` tag marks "everything up to here has been distributed". When changes pile up on main and the maintainer decides to distribute them, they become one version. The version is not bumped per commit.
@@ -98,7 +100,7 @@ npm test
 ```
 
 - How to run the app from source, the tests, and the development checks that drive the running app (`scripts/dev-*.js`) are in [docs/development.md](../docs/development.md).
-- CI (`.github/workflows/ci.yml`) runs the same on Ubuntu and Windows (the lint on Ubuntu only). It does not run for documentation-only changes.
+- CI (`.github/workflows/ci.yml`) runs the same on Ubuntu and Windows (the lint on Ubuntu only). Every pull request runs it, as main requires it to pass; a push to main that changes only documentation does not.
 - On macOS, it runs every night, only when the head of main has not been checked yet (`.github/workflows/mac.yml`; macOS minutes cost 10 times as much). For PRs that touch the mac side, also run it on macOS with `gh workflow run mac.yml --ref <branch>`.
 - Write what can only be verified on a real machine in the PR as checklists under "To verify on Windows" and "To verify on mac". The PR template (`.github/pull_request_template.md`) has sections for them.
 - If you change anything in `helper-extension/`, bump `version` in `helper-extension/package.json`.

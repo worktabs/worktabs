@@ -63,7 +63,7 @@ npm run coverage   # カバレッジを取りながら単体テストを動か�
   - Ubuntu では `npm audit --omit=dev --audit-level=high` も実行します。アプリに入るパッケージに high か critical の勧告（advisory）があると、失敗にします。開発用のツールの勧告では失敗にしません。利用者のマシンには届かないためです。
   - Ubuntu では、スモークチェック（`npm run smoke`。下記）も実行します。Electron の本体と Linux 版の code-server はキャッシュするので（code-server は版ごと）、どちらかが変わったあとの最初の実行でだけダウンロードします。スモークチェックが失敗したときは、アプリと code-server のログを `smoke-logs` の artifact として残します。
   - いまは Windows と macOS を止めて、Ubuntu だけでテストしています。2026 年 10 月に Actions の予算を使い切ったためです。Windows は `ci.yml` の matrix に `windows-latest` を戻し、macOS は `gh workflow enable "CI (macOS)"` で戻します。止めている間は、Windows と macOS のテストを手元で動かしてからマージします。リリースも、タグを push せずに手元で作ります（[releasing.md](releasing.md#いまは手元でビルドして配る)）。
-  - ドキュメントだけの変更（docs/、README.md、README.ja.md、AGENTS.md、CLAUDE.md、CHANGELOG.md と、.github/ の CONTRIBUTING.md・CODE_OF_CONDUCT.md・SECURITY.md・issue と PR のテンプレート）では動かしません。テストが読まず、アプリにも入らないためです。
+  - main への push では、ドキュメントだけの変更（docs/、README.md、README.ja.md、AGENTS.md、CLAUDE.md、CHANGELOG.md と、.github/ の CONTRIBUTING.md・CODE_OF_CONDUCT.md・SECURITY.md・issue と PR のテンプレート）なら動かしません。テストが読まず、アプリにも入らないためです。PR では、ドキュメントだけの変更でも毎回動かします。main は `Test (ubuntu-latest)` のチェックが通った PR しか受け付けないので、チェックが動かないと PR が待ったままになるためです。
   - PR に新しく push すると、まだ動いている前の実行は止めます。main への push は、マージのコミットごとに最後まで動かします（サイドバーが、マージ済みの PR の行にその CI を出すため）。
 - Dependabot（`.github/dependabot.yml`）が、npm のパッケージと GitHub Actions を毎週確かめます。それぞれの minor と patch の更新は 1 つの PR にまとめて来て、major の更新は 1 つずつ別の PR で来ます。Electron の major の更新は、マージする前に Windows と macOS で動かします。
 - macOS では、毎晩 3 時すぎ（日本時間）に、main の先頭をテストし、`npm run pack:mac` まで行います（`.github/workflows/mac.yml`）。

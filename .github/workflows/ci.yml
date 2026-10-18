@@ -1,12 +1,12 @@
 name: CI
 
-# Changes to these documents alone run nothing: no test reads them, and none is packaged.
+# A push to main that changes these documents alone runs nothing: no test reads them, and none is
+# packaged. Every pull request runs, since main takes only pull requests whose Test check passed.
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', 'README.md', 'README.ja.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', '.github/CONTRIBUTING.md', '.github/CODE_OF_CONDUCT.md', '.github/SECURITY.md', '.github/ISSUE_TEMPLATE/**', '.github/pull_request_template.md']
   pull_request:
-    paths-ignore: ['docs/**', 'README.md', 'README.ja.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', '.github/CONTRIBUTING.md', '.github/CODE_OF_CONDUCT.md', '.github/SECURITY.md', '.github/ISSUE_TEMPLATE/**', '.github/pull_request_template.md']
   workflow_dispatch:
 
 permissions:
