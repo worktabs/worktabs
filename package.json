@@ -126,7 +126,7 @@
     "@eslint/js": "^10.0.1",
     "@resvg/resvg-js": "2.6.2",
     "@types/node": "^22.20.5",
-    "electron": "^44.7.0",
+    "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
     "eslint": "^10.12.0",
     "git-cliff": "^2.14.2",
