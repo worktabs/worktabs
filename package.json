@@ -1,7 +1,7 @@
 {
   "name": "worktabs",
   "productName": "Worktabs",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "One window for your Claude Code and Codex conversations, one tab per git worktree",
   "license": "MIT",
