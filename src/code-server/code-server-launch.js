@@ -21,14 +21,34 @@ const KEEP_ENV = new Set(['CLAUDE_CODE_OAUTH_TOKEN']);
 // code-server reads these as its own login secret; the app sets HASHED_PASSWORD itself.
 const DROP_ENV = new Set(['MCP_CONNECTION_NONBLOCKING', 'PASSWORD', 'HASHED_PASSWORD']);
 
+// code-server's Node trusts only its own CA list unless told to also trust the OS store. A proxy
+// that inspects HTTPS re-signs certificates with a root CA that only the OS store has, so the
+// extension gallery fails with "self-signed certificate in certificate chain" (Electron itself
+// trusts the store). Node versions without the option ignore it. Locally, a value the user set
+// is kept; WSL sets it for code-server (code-server-wsl.js).
+const SYSTEM_CA_ENV = { NODE_USE_SYSTEM_CA: '1' };
+
 function cleanEnv(extra = {}) {
-  const env = {};
+  const env = { ...SYSTEM_CA_ENV };
   for (const [key, value] of Object.entries(process.env)) {
     if (LEAKY_ENV.test(key) && !KEEP_ENV.has(key.toUpperCase())) continue;
     if (DROP_ENV.has(key.toUpperCase())) continue;
     env[key] = value;
   }
   return { ...env, ...extra };
+}
+
+// Node's own warnings on stderr: "(node:123) [DEP0169] DeprecationWarning: ... prone to errors ..."
+// and the "(Use `node --trace-deprecation ...` ...)" line after it. They say nothing about what
+// failed, and the first one would pass for the error line.
+const NODE_WARNING = /^\(node:\d+\) |^\(Use `node --trace-/;
+
+// What went wrong in a failed command's stderr (which may hold a whole stack trace): its first
+// error line, else its first line, else `fallback`.
+function firstErrorLine(stderr, fallback) {
+  const lines = String(stderr || '').split(/\r?\n/).map((line) => line.trim())
+    .filter((line) => line && !NODE_WARNING.test(line));
+  return lines.find((line) => /error/i.test(line)) || lines[0] || fallback;
 }
 
 // Resolves `preferred` when it can be bound, otherwise a free port chosen by the OS that is not
@@ -312,6 +332,6 @@ async function waitReady({ port, error, current, runtime }) {
   }
   throw new Error(t('code-server did not start within 60 seconds'));
 }
-module.exports = { cleanEnv, DEFAULT_SETTINGS, folderUrl, folderFromUrl, httpStatus, localFiles, pickPort,
+module.exports = { cleanEnv, firstErrorLine, SYSTEM_CA_ENV, DEFAULT_SETTINGS, folderUrl, folderFromUrl, httpStatus, localFiles, pickPort,
   serverFolderFromUrl, serverFolderUrl, unproxiedUrl, writeLanguagePacks, writeSettings,
   launchAuthentication, launchArgs, prepareLaunch, launchRuntime, stopSettings, waitReady };

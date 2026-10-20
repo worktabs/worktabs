@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { CodeServerManager } = require('../src/code-server/code-server');
 const { WslCodeServerManager } = require('../src/code-server/code-server-wsl');
-const { launchArgs, launchAuthentication, prepareLaunch, localFiles } = require('../src/code-server/code-server-launch');
+const { cleanEnv, firstErrorLine, launchArgs, launchAuthentication, prepareLaunch, localFiles } = require('../src/code-server/code-server-launch');
 const { tempDir } = require('./support');
 const deferred = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
 
@@ -53,6 +53,7 @@ for (const backend of ['local', 'wsl']) {
     const request = f.calls[0];
     assert.equal(result.port, 4600); assert.equal(result.cookie.name, 'code-server-session-tab'); assert.equal(result.cookie.value, request.env.HASHED_PASSWORD);
     assert.equal(request.env.WORKTABS_TAB_ID, 'tab');
+    if (process.env.NODE_USE_SYSTEM_CA === undefined) assert.equal(request.env.NODE_USE_SYSTEM_CA, '1');
     for (const flag of ['--ignore-last-opened', '--disable-telemetry', '--disable-update-check']) assert.ok(request.args.includes(flag));
     assert.equal(request.args[request.args.indexOf('--locale') + 1], 'ja');
     assert.equal(request.args[request.args.indexOf('--auth') + 1], 'password');
@@ -144,4 +145,46 @@ test('the local manager still resolves a folder URL through the neutral helper',
   const manager = { ports: () => [4600] };
   assert.equal(CodeServerManager.prototype.folderFromUrl.call(manager, `http://127.0.0.1:4600/?folder=${encodeURIComponent(folder)}`), folder);
   assert.equal(CodeServerManager.prototype.folderFromUrl.call(manager, 'http://127.0.0.1:4700/?folder=/other'), null);
+});
+
+test('cleanEnv has Node trust the OS certificate store, unless the user set it', (t) => {
+  const saved = process.env.NODE_USE_SYSTEM_CA;
+  t.after(() => { if (saved === undefined) delete process.env.NODE_USE_SYSTEM_CA; else process.env.NODE_USE_SYSTEM_CA = saved; });
+  delete process.env.NODE_USE_SYSTEM_CA;
+  assert.equal(cleanEnv().NODE_USE_SYSTEM_CA, '1');
+  assert.equal(cleanEnv({ EXTENSIONS_GALLERY: undefined }).NODE_USE_SYSTEM_CA, '1');
+  process.env.NODE_USE_SYSTEM_CA = '0';
+  assert.equal(cleanEnv().NODE_USE_SYSTEM_CA, '0');
+});
+
+test('firstErrorLine skips Node warnings, which would pass for the error line', () => {
+  const stderr = [
+    'Installing extensions...',
+    '(node:40472) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications.',
+    '(Use `node --trace-deprecation ...` to show where the warning was created)',
+    'Error while installing extensions: self-signed certificate in certificate chain',
+    'self-signed certificate in certificate chain',
+  ].join('\r\n');
+  assert.equal(firstErrorLine(stderr, 'fallback'), 'Error while installing extensions: self-signed certificate in certificate chain');
+  assert.equal(firstErrorLine('(node:1) Warning: something errored\n  first line  \n', 'fallback'), 'first line');
+  assert.equal(firstErrorLine('(node:1) ExperimentalWarning: error\n', 'fallback'), 'fallback');
+  assert.equal(firstErrorLine(undefined, 'fallback'), 'fallback');
+});
+
+test('WSL extension installs have Node trust the CA store and report the error, not a Node warning', async (t) => {
+  const dir = tempDir(t); const calls = [];
+  const wsl = new EventEmitter();
+  wsl.exec = async (command, args, options) => {
+    calls.push({ command, args, options });
+    throw Object.assign(new Error('exit 1'), {
+      stderr: '(node:7) [DEP0169] DeprecationWarning: prone to errors\nError while installing extensions: self-signed certificate in certificate chain\n',
+    });
+  };
+  const manager = new WslCodeServerManager({ distro: 'Ubuntu', dataDir: dir, hooks: { token: 'hook-token' }, wsl });
+  manager.home = '/home/me'; manager.codeServerDir = '/server';
+  await assert.rejects(manager.installExtension('Anthropic.claude-code'),
+    { message: 'Anthropic.claude-code: Error while installing extensions: self-signed certificate in certificate chain' });
+  assert.equal(calls[0].command, 'env');
+  assert.deepEqual(calls[0].args.slice(0, 3), ['NODE_USE_SYSTEM_CA=1', manager.nodeExe, '/server']);
+  assert.equal(calls[0].options.shellEnv, true);
 });

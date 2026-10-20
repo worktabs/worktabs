@@ -41,6 +41,12 @@ Local imports are immutable cached snapshots with SHA-256 hashes. Updates wait f
 
 After installation, a hidden local workbench checks startup and extensions that declare startup activation. If installation or this probe fails, previous cached payloads are reinstalled and new additions removed. This does not test every command, login flow, or chat response. **Restore previous** reinstalls the preceding cached snapshot without downloading, preserving its recorded source. The registry keeps one previous snapshot per extension; automatic cache cleanup is not implemented yet.
 
+## Proxies that inspect HTTPS
+
+Some company networks have a proxy that re-signs HTTPS certificates with the company's own root CA. code-server's Node normally trusts only its own list of CAs, so it rejects those certificates ("self-signed certificate in certificate chain"). Worktabs starts code-server with `NODE_USE_SYSTEM_CA=1`, so its Node also trusts the CAs in the OS certificate store (the Windows store, or the macOS keychain). If you set `NODE_USE_SYSTEM_CA` yourself, Worktabs keeps your value. `NODE_EXTRA_CA_CERTS` is passed on too.
+
+In WSL, Node reads the distribution's own store (`/etc/ssl/certs`), not the Windows one. Install the root CA there (for example, with `update-ca-certificates` on Ubuntu).
+
 ## WSL
 
 Import matching Linux or universal extensions separately for `linux-x64` or `linux-arm64`. Windows imports are never copied to WSL. Prepared snapshots install when a matching distribution next starts a tab. The table shows the prepared version, not a verified live WSL installation. WSL failures do not yet automatically roll back snapshots; **Restore previous** can restore an existing previous snapshot. Transactional WSL probing and removal of a first import remain follow-up work.

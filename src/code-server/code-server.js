@@ -3,7 +3,7 @@ const { execFile, execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { t } = require('../i18n');
-const { cleanEnv, DEFAULT_SETTINGS, folderUrl, folderFromUrl, httpStatus, localFiles, pickPort,
+const { cleanEnv, firstErrorLine, DEFAULT_SETTINGS, folderUrl, folderFromUrl, httpStatus, localFiles, pickPort,
   serverFolderFromUrl, serverFolderUrl, unproxiedUrl, writeLanguagePacks, writeSettings,
   launchArgs, launchRuntime, stopSettings, waitReady } = require('./code-server-launch');
 const { InstanceManager } = require('./code-server-instances');
@@ -99,9 +99,7 @@ class CodeServerManager extends InstanceManager {
         { env: cleanEnv({ EXTENSIONS_GALLERY: undefined }), windowsHide: true, timeout: 5 * 60 * 1000 },
         (error, _stdout, stderr) => {
           if (!error) return resolve();
-          // stderr may hold a whole stack trace; its first error line says what happened.
-          const lines = (stderr || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-          reject(new Error(`${name}: ${lines.find((line) => /error/i.test(line)) || lines[0] || error.message}`));
+          reject(new Error(`${name}: ${firstErrorLine(stderr, error.message)}`));
         },
       );
     });

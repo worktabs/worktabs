@@ -14,6 +14,7 @@ const { parseExtensionIndex } = require('./extension-index');
 const fs = require('fs');
 const path = require('path');
 const {
+  firstErrorLine, SYSTEM_CA_ENV,
   serverFolderFromUrl,
   serverFolderUrl,
   launchArgs, launchRuntime, waitReady,
@@ -40,8 +41,7 @@ function installedVersions(text) {
 
 // What went wrong in a failed command: its first error line, else its first line.
 function firstError(error) {
-  const lines = String(error.stderr || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.find((line) => /error/i.test(line)) || lines[0] || error.message;
+  return firstErrorLine(error.stderr, error.message);
 }
 
 class WslCodeServerManager extends InstanceManager {
@@ -277,9 +277,11 @@ class WslCodeServerManager extends InstanceManager {
 
   // Installs an extension into the distribution's extensions folder: an id, <id>@<version>, or
   // the path of a VSIX in the distribution. With the user's shell environment, which may set a
-  // proxy.
+  // proxy, and with Node trusting the distribution's CA store (cleanEnv in code-server-launch.js).
   async installExtension(extension) {
     const args = [
+      ...Object.entries(SYSTEM_CA_ENV).map(([key, value]) => `${key}=${value}`),
+      this.nodeExe,
       this.codeServerDir,
       '--config', `${this.base}/code-server.yaml`,
       '--user-data-dir', `${this.base}/install`,
@@ -288,7 +290,7 @@ class WslCodeServerManager extends InstanceManager {
       '--force',
     ];
     try {
-      await this.wsl.exec(this.nodeExe, args, { timeout: 5 * 60 * 1000, shellEnv: true });
+      await this.wsl.exec('env', args, { timeout: 5 * 60 * 1000, shellEnv: true });
     } catch (error) {
       throw new Error(`${path.posix.basename(extension)}: ${firstError(error)}`, { cause: error });
     }
@@ -352,7 +354,7 @@ class WslCodeServerManager extends InstanceManager {
           '--user-data-dir', userDataDir, '--extensions-dir', this.extensionsDir], port, tabId, locale: this.locale, folder: linuxFolder }),
         env: {
           WORKTABS_TAB_ID: tabId, WORKTABS_HOOK_URL: this.hookUrl, WORKTABS_HOOK_TOKEN: this.hooks.token,
-          WORKTABS_CLAUDE_SETTINGS: this.hookSettingsFile, HASHED_PASSWORD: sessionKey,
+          WORKTABS_CLAUDE_SETTINGS: this.hookSettingsFile, HASHED_PASSWORD: sessionKey, ...SYSTEM_CA_ENV,
           ...(this.restrictExtensionGallery ? { EXTENSIONS_GALLERY: '{}' } : {}),
         },
       });
