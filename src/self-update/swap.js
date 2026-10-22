@@ -66,16 +66,22 @@ Remove-Item -LiteralPath $Container -Recurse -Force -ErrorAction SilentlyContinu
 `;
 
 // On macOS a running program does not hold its folder, so only the app's own exit is waited for.
-// Errors are a step's name: sh has no JSON, and the app words them.
+// Errors are a step's name: sh has no JSON, and the app words them. `open` does not pass this
+// environment on, so a separate data folder (WORKTABS_DATA_DIR) goes with --env, and -n starts
+// this app even when another copy of Worktabs runs from elsewhere.
 const SH = String.raw`
 pid=$1 app=$2 staged=$3 container=$4 old=$5 version=$6 result=$7 relaunch=$8
+start_app() {
+  [ "$relaunch" = 1 ] || return 0
+  if [ -n "$WORKTABS_DATA_DIR" ]; then open -n --env "WORKTABS_DATA_DIR=$WORKTABS_DATA_DIR" "$app"; else open -n "$app"; fi
+}
 finish() {
   printf '{"version":"%s","ok":%s,"error":"%s"}\n' "$version" "$1" "$2" > "$result"
 }
 fail() {
   finish false "$1"
   rm -rf "$container"
-  [ "$relaunch" = 1 ] && open "$app"
+  start_app
   exit 1
 }
 i=0
@@ -92,7 +98,7 @@ if ! mv "$staged" "$app"; then
 fi
 xattr -dr com.apple.quarantine "$app" 2>/dev/null
 finish true ""
-[ "$relaunch" = 1 ] && open "$app"
+start_app
 rm -rf "$old" "$container"
 `;
 
