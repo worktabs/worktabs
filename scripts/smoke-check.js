@@ -283,7 +283,9 @@ async function checks({ repo, ghqRepo, configFile }) {
   await call('key', { id: 'dialog', keyCode: 'Escape' });
   check('the Extensions pane is refused once Settings closes', await waitFor('refused', async () => (await inPage('dialog', 'window.host.extensions.list()')).error === 'Open Settings first.', 10000));
   inPage('sidebar', `window.host.addWorktree(${JSON.stringify(repo)})`);
-  check('the add-worktree dialog opens', await waitFor('the dialog', async () => /branch/i.test(await pageText('dialog'))));
+  // Text only its form has: closing Settings leaves its form on the page until another dialog
+  // shows, and that one says "branch" too.
+  check('the add-worktree dialog opens', await waitFor('the dialog', async () => (await pageText('dialog')).includes('Suggest a branch name')));
   const plan = await inPage('dialog', `window.host.worktree.plan(${JSON.stringify(repo)}, 'smoke-plan')`);
   check('it plans a new branch, with the files to copy', plan && plan.from === 'new' && plan.copies === 1);
   check('it reads a task', (await inPage('dialog', `window.host.worktree.task(${JSON.stringify(repo)}, 'do something')`)).kind === 'text');
