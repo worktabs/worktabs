@@ -2,6 +2,11 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.2] - 2026-10-22
+
+### Bug fixes
+- let the Claude Code panel sign in, by not adding --settings to claude's subcommands ([#9](https://github.com/worktabs/worktabs/pull/9))
+
 ## [0.5.1] - 2026-10-20
 
 ### Bug fixes
