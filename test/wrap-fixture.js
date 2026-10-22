@@ -83,6 +83,18 @@ function runWrapper(command, args, env) {
   });
 }
 
+// What claude must be given, with `settings` as the app's settings file. A session gets the file;
+// a subcommand gets its arguments as they are, as claude rejects --settings after "auth status",
+// which the extension runs to check the sign-in. The stand-in for claude has to be one program
+// here, as claude is: the wrappers look at the argument after it.
+function settingsCases(settings) {
+  return [
+    { args: ['--print', '--verbose'], expected: ['--print', '--verbose', '--settings', settings] },
+    { args: [], expected: ['--settings', settings] },
+    { args: ['auth', 'status', '--json'], expected: ['auth', 'status', '--json'] },
+  ];
+}
+
 module.exports = {
-  CHILD, EXPECTED_CODE, EXPECTED_ERR, EXPECTED_OUT, FIRST, REORDERED, REST, USAGE, runWrapper, writeChild,
+  CHILD, EXPECTED_CODE, EXPECTED_ERR, EXPECTED_OUT, FIRST, REORDERED, REST, USAGE, runWrapper, settingsCases, writeChild,
 };

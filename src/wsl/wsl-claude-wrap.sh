@@ -9,7 +9,12 @@
 # manages only. Worktabs writes this file into the distribution.
 WORKTABS_PROC_ID=$$
 export WORKTABS_PROC_ID
+# A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
+# --settings after it, and starts no session for the hooks anyway. ${2--} is "-" when claude
+# is given no arguments.
 if [ -n "$WORKTABS_CLAUDE_SETTINGS" ]; then
-  exec "$@" --settings "$WORKTABS_CLAUDE_SETTINGS"
+  case "${2--}" in
+    -*) exec "$@" --settings "$WORKTABS_CLAUDE_SETTINGS" ;;
+  esac
 fi
 exec "$@"

@@ -52,7 +52,10 @@ static class ClaudeWrap
         var claudeArgs = new StringBuilder();
         for (int i = 1; i < args.Length; i++) AppendArg(claudeArgs, args[i]);
         string settings = Environment.GetEnvironmentVariable("WORKTABS_CLAUDE_SETTINGS");
-        if (!string.IsNullOrEmpty(settings))
+        // A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
+        // --settings after it, and starts no session for the hooks anyway.
+        bool session = args.Length < 2 || args[1].StartsWith("-", StringComparison.Ordinal);
+        if (session && !string.IsNullOrEmpty(settings))
         {
             AppendArg(claudeArgs, "--settings");
             AppendArg(claudeArgs, settings);

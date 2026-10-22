@@ -155,7 +155,10 @@ function postHook() {
 function run(argv) {
   const [claude, ...args] = argv;
   const settings = process.env.WORKTABS_CLAUDE_SETTINGS;
-  if (settings) args.push('--settings', settings);
+  // A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
+  // --settings after it, and starts no session for the hooks anyway.
+  const session = args.length === 0 || args[0].startsWith('-');
+  if (settings && session) args.push('--settings', settings);
   const procId = String(process.pid);
   /** @type {NodeJS.ProcessEnv} */
   const env = { ...process.env, WORKTABS_PROC_ID: procId };

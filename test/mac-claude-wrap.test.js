@@ -8,7 +8,7 @@ const test = require('node:test');
 const { HookServer } = require('../src/conversations/hooks');
 const { installWrapper, shellQuote, usageScanner, wrapperScript } = require('../src/agents/mac-claude-wrap');
 const { tempDir } = require('./support');
-const { EXPECTED_CODE, EXPECTED_ERR, EXPECTED_OUT, REORDERED, USAGE, runWrapper, writeChild } = require('./wrap-fixture');
+const { EXPECTED_CODE, EXPECTED_ERR, EXPECTED_OUT, REORDERED, USAGE, runWrapper, settingsCases, writeChild } = require('./wrap-fixture');
 
 // The script is sh, and the program runs on whatever node started the test.
 const skip = process.platform === 'win32' ? 'needs a POSIX shell' : false;
@@ -21,6 +21,16 @@ process.stdout.write(JSON.stringify({
   electron: process.env.ELECTRON_RUN_AS_NODE || '',
 }));
 `;
+
+// The stand-in for claude as one program (see settingsCases): an sh script that runs ARGS_CHILD.
+function writeArgsChild(dir) {
+  const script = path.join(dir, 'args-child.js');
+  fs.writeFileSync(script, ARGS_CHILD);
+  const child = path.join(dir, 'args-child');
+  fs.writeFileSync(child, `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(script)} "$@"\n`);
+  fs.chmodSync(child, 0o755);
+  return child;
+}
 
 async function hookServer(t) {
   const server = new HookServer();
@@ -62,30 +72,31 @@ test('the wrapper passes claude\'s output through as it comes, and posts the rat
   assert.deepEqual(hooks, []);
 });
 
-test('the wrapper adds the app\'s settings, and names itself in claude\'s environment', { skip, timeout: 30000 }, async (t) => {
+test('the wrapper adds the app\'s settings to a session, and names itself in claude\'s environment', { skip, timeout: 30000 }, async (t) => {
   const dir = tempDir(t);
   const wrapper = installWrapper({ dir, exe: process.execPath });
-  const child = path.join(dir, 'args-child.js');
-  fs.writeFileSync(child, ARGS_CHILD);
+  const child = writeArgsChild(dir);
   const settings = path.join(dir, 'hook settings.json');
 
   const server = await hookServer(t);
-  const proc = spawn(wrapper, [process.execPath, child, '--print', '--verbose'], {
-    env: wrapperEnv(server, { WORKTABS_CLAUDE_SETTINGS: settings }),
-  });
-  let out = '';
-  proc.stdout.on('data', (chunk) => (out += chunk));
-  const code = await new Promise((resolve) => proc.on('close', resolve));
+  for (const { args, expected } of settingsCases(settings)) {
+    const proc = spawn(wrapper, [child, ...args], {
+      env: wrapperEnv(server, { WORKTABS_CLAUDE_SETTINGS: settings }),
+    });
+    let out = '';
+    proc.stdout.on('data', (chunk) => (out += chunk));
+    const code = await new Promise((resolve) => proc.on('close', resolve));
 
-  assert.equal(code, 0);
-  assert.deepEqual(JSON.parse(out), {
-    args: ['--print', '--verbose', '--settings', settings],
-    // The wrapper's own id: the app watches it to see the panel's claude end. The shell script
-    // runs the program with exec, so the id is the one the app started.
-    procId: String(proc.pid),
-    // Set for the wrapper alone; claude must not run as node.
-    electron: '',
-  });
+    assert.equal(code, 0, `with ${args.join(' ') || 'no arguments'}`);
+    assert.deepEqual(JSON.parse(out), {
+      args: expected,
+      // The wrapper's own id: the app watches it to see the panel's claude end. The shell script
+      // runs the program with exec, so the id is the one the app started.
+      procId: String(proc.pid),
+      // Set for the wrapper alone; claude must not run as node.
+      electron: '',
+    });
+  }
 });
 
 test('--hook posts what it is given to the app, and says nothing to claude', { skip, timeout: 30000 }, async (t) => {
