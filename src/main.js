@@ -1,7 +1,7 @@
 // Worktabs: one browser VS Code (code-server) per git worktree, shown as tabs, with the
 // state of the Claude Code sessions in each tab (working / waiting for approval / done) as
 // tab badges.
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -23,7 +23,7 @@ const {
 } = require('electron');
 
 const { attachAppIcons } = require('./window/app-icons');
-const { gitMessage } = require('./commands');
+const { gitMessage, runAt } = require('./commands');
 const { cloneRepo, hasGhq, placeFolder } = require('./repos/clone');
 const { CodeServerManager, DEFAULT_SETTINGS } = require('./code-server/code-server');
 const { createServerRegistry } = require('./code-server/server-registry');
@@ -92,7 +92,12 @@ const { createWorktreeRemoval } = require('./repos/worktree-removal');
 const { createCloneCoordinator } = require('./repos/clone-coordinator');
 const { checkedTask, describeTask, firstPrompt, suggestBranch } = require('./repos/task');
 const { windowBackground } = require('./window/theme');
-const { findUpdates, startupExtensions } = require('./code-server/updates');
+const { findUpdates, getJson, startupExtensions } = require('./code-server/updates');
+const { createSelfUpdate } = require('./self-update/self-update');
+const { fetchReleases, newestRelease } = require('./self-update/releases');
+const { updateTarget } = require('./self-update/target');
+const { removeLeftovers, stageRelease, stagingPaths } = require('./self-update/stage');
+const { readSwapResult, swapCommand, swapScript } = require('./self-update/swap');
 const { ExtensionImports, installedExtensions: localExtensions, localTarget, readVsix } = require('./code-server/extension-imports');
 const { UsageTracker } = require('./agents/usage');
 const { CodexUsageTracker } = require('./codex/codex-usage');
@@ -264,7 +269,7 @@ function placeholderUrl(title, detail = '') {
 // ---- State shown in the tab bar ----------------------------------------------------------
 
 const stateView = createViewState({
-  lifecycle, sessions, tabAgent, update: () => updateCoordinator.state, removing, cloning,
+  lifecycle, sessions, tabAgent, update: () => updateCoordinator.state, appUpdate: () => selfUpdate.state, removing, cloning,
   repoUsed: () => tabStore.repoUsed(), agents: () => config.agents, usage, codexUsage,
   theme: () => theme.current(), views: () => ({ win, sidebar, emptyView }),
 });
@@ -556,7 +561,7 @@ const probeInstance = createUpdateProbe({
 // `busy`) | 'applying' | 'done' | 'failed'. items: the updates, [{ kind, id, name, from, to }].
 const {
   coordinator: updateCoordinator, setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
-  extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension,
+  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension,
 } = createAppUpdates({
   config, saveConfig, dataDir, tabs, servers: codeServers.local, wslServers: codeServers.wsl, extensionImports,
   pause: (tab) => {
@@ -566,6 +571,74 @@ const {
   start: startServer, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe: probeInstance,
   messageBox, changed: pushState, log: logUpdate, find: findUpdates,
 });
+
+// ---- Updates of Worktabs itself ------------------------------------------------------------
+
+const SELF_UPDATE_DIR = path.join(dataDir, 'app-update');
+const SELF_UPDATE_RESULT = path.join(SELF_UPDATE_DIR, 'result.json');
+const SELF_UPDATE_FILE = path.join(dataDir, 'app-update.json');
+const selfTarget = updateTarget({ execPath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, exists: fs.existsSync });
+
+function readJsonFile(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+const selfUpdate = createSelfUpdate({
+  currentVersion: app.getVersion(),
+  appPath: selfTarget.appPath,
+  reason: selfTarget.reason,
+  find: async () => newestRelease(await fetchReleases({ runGh: (args) => runAt(null, 'gh', args, 20000), getJson }), app.getVersion()),
+  stage: (release, onProgress) => {
+    const net = require('./self-update/net');
+    return stageRelease({ release, appPath: selfTarget.appPath, dataDir, onProgress, ...net });
+  },
+  swap: ({ staged, container }, version, relaunch) => {
+    fs.mkdirSync(SELF_UPDATE_DIR, { recursive: true });
+    fs.rmSync(SELF_UPDATE_RESULT, { force: true });
+    let script;
+    if (process.platform !== 'win32') {
+      script = path.join(SELF_UPDATE_DIR, 'swap.sh');
+      fs.writeFileSync(script, swapScript());
+    }
+    const { command, args } = swapCommand({
+      pid: process.pid, appPath: selfTarget.appPath, staged, container, old: stagingPaths(selfTarget.appPath).old,
+      version, result: SELF_UPDATE_RESULT, relaunch, script,
+    });
+    // The new version starts as from Explorer or Finder, not as a child of this one.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(ELECTRON_|WORKTABS_)/i.test(key)));
+    // Not in the app's folder (its working folder when started from a shortcut): Windows does not
+    // rename a folder that a process runs in.
+    spawn(command, args, { cwd: SELF_UPDATE_DIR, detached: true, stdio: 'ignore', windowsHide: true, env }).unref();
+  },
+  risks: async () => {
+    const { busy, unobserved } = await updateRisks();
+    // A code-server update in the middle of switching would be cut off.
+    return { busy: updateCoordinator.busy ? [...busy, 'code-server'] : busy, unobserved };
+  },
+  quit: () => win?.close(),
+  skipped: () => readJsonFile(SELF_UPDATE_FILE)?.skipped || '',
+  skip: (version) => fs.writeFileSync(SELF_UPDATE_FILE, JSON.stringify({ skipped: version })),
+  lastResult: () => {
+    const text = fs.existsSync(SELF_UPDATE_RESULT) ? fs.readFileSync(SELF_UPDATE_RESULT, 'utf8') : null;
+    fs.rmSync(SELF_UPDATE_RESULT, { force: true });
+    return text === null ? null : readSwapResult(text);
+  },
+  messageBox, changed: pushState, log: (line) => logUpdate(`worktabs: ${line}`),
+});
+
+// Checks for a new version of Worktabs at start and then twice a day, as the app may stay open
+// for days.
+function startSelfUpdates() {
+  if (!selfTarget.checkable) return;
+  if (selfTarget.appPath) {
+    try { removeLeftovers(selfTarget.appPath); }
+    catch (error) { logUpdate(`worktabs: could not remove the last update's folders: ${error.message}`); }
+  }
+  selfUpdate.showLastResult();
+  if (!config.updateCheck) return;
+  selfUpdate.check();
+  setInterval(() => selfUpdate.check(), 12 * 60 * 60 * 1000);
+}
 
 // ---- Repositories and settings -------------------------------------------------------------
 
@@ -694,7 +767,9 @@ const { showAddMenu, showMoreMenu, showTabMenu, showRepoMenu, showWorktreeMenu, 
     const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] || null;
   },
-  addRepository, openTab, canUpdate: () => Boolean(codeServers.local()), checkForUpdates, openSettingsDialog, openConfigFile,
+  addRepository, openTab, canUpdate: () => Boolean(codeServers.local()), checkForUpdates,
+  canCheckApp: () => selfTarget.checkable, checkAppUpdate: () => selfUpdate.check({ manual: true }),
+  openSettingsDialog, openConfigFile,
   restartServer, suspendTab, reloadTab, closeTab, closeTabsTogether, addWorktreeDialog,
   removableWorktree, confirmRemoveWorktree, isGitFolder, openInExplorer, copy: (text) => clipboard.writeText(text),
   openExternal: (url) => shell.openExternal(url), openGithub, branchPage,
@@ -853,7 +928,7 @@ registerIpc(ipcMain, appIpcRoutes({
   updateAvailable: () => updateCoordinator.state.status === 'available',
   queueUpdate: () => setTimeout(() => startUpdate().catch((error) => setUpdate({ status: 'failed', detail: error.message })), 0),
   repoInfo, openGithub, openNumbered, openChecks, pullRequests,
-  startUpdate, cancelUpdate, dismissUpdate,
+  startUpdate, cancelUpdate, dismissUpdate, selfUpdate,
   dialogReady: () => ({ dialog: dialogs.current, theme: theme.current() }),
   answerDialog: (id, response, checkboxChecked) => dialogs.answer(id, response, checkboxChecked),
   copyDialog: () => {
@@ -874,6 +949,7 @@ app.on('will-quit', () => {
   clearInterval(usageRefreshTimer);
   usagePolling.stop();
   for (const manager of codeServers.all()) manager.stopAll();
+  selfUpdate.onQuit();
 });
 
 app.whenReady().then(async () => {
@@ -967,6 +1043,7 @@ app.whenReady().then(async () => {
     // The primaries' chat widths, for the worktrees opened after the next start.
     beforeClose: () => Promise.all([...tabs.values()].map((tab) => rememberChatWidth(tab))),
     close: () => win.close(),
+    canceled: () => selfUpdate.quitCanceled(),
   });
   win.on('close', (event) => {
     clearTimeout(saveTimer);
@@ -1037,6 +1114,8 @@ app.whenReady().then(async () => {
     }),
     specs: () => extensionSpecs(), changed: pushState,
   });
+  // Even when code-server could not start: a new version may be what fixes that.
+  startSelfUpdates();
   if (!servers) return;
   usagePolling.refreshAll();
   usageRefreshTimer = setInterval(() => usagePolling.refreshAll(), REFRESH_EVERY);

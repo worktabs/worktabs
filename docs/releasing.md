@@ -56,6 +56,7 @@ It runs on a push of a tag that starts with `v`.
 
 - If the tag and the version in `package.json` differ, it fails without building, because the app reports the version in `package.json`.
 - The release notes are the section for that version taken from `CHANGELOG.md` at the tag's commit (`scripts/release-notes.js`). The workflow does not run git-cliff, so the CHANGELOG and the release notes never disagree. If the section is missing, it fails before building. A table of which file to download is added at the end.
+- Before building, it writes `native/release.json`. Only builds that have it update themselves from the releases ([architecture.md](architecture.md#updating-worktabs-itself)).
 - The build runs as two parallel jobs, Windows (`npm run dist`) and macOS (`npm run dist:mac`). Both run `npm run check` and `npm test` before building. If one fails, the other is stopped too and no release is created.
 - The last job gathers the built files and publishes them in one release.
 - `SHA256SUMS.txt` (the SHA-256 of the installer and the two zips) is published with them. If the repository is public, an Artifact attestation (proof of which commit the files were built from) is attached too. It is not available for private repositories, so it is skipped there.

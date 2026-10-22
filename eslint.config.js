@@ -7,7 +7,7 @@ const PAGE_SHARED = ['t', 'translator'];
 const SIDEBAR_SHARED = [
   'sidebarModel', 'SidebarData', 'elapsedText', 'sinceText', 'listText', 'recentChecks', 'ownChecks',
   'checkLabel', 'checksLines', 'pressHold', 'hoverIntent', 'createSidebarRows', 'createGithubBar',
-  'createUpdateCard', 'createUsageFooter', 'attachSidebarResize', 'createPageTheme', 'createIcons',
+  'createUpdateCard', 'createAppUpdateCard', 'createUsageFooter', 'attachSidebarResize', 'createPageTheme', 'createIcons',
   'createPullSelectors', 'createUnclonedSection',
 ];
 const DIALOG_SHARED = [

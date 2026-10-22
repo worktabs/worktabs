@@ -352,6 +352,19 @@ When Codex is enabled, the sidebar footer also shows **Codex · Used**. Worktabs
 - The most recently observed account supplies the footer. An account change clears snapshots from other tabs, which must report their account again before contributing. If account identity has not been reported, values are shown conservatively from the latest eligible observation. This is not a comparison of multiple signed-in accounts.
 - Codex values are held in memory only. Restarting Worktabs waits for new data. Tokens, account emails, full authentication responses, credits, and reset-credit details are not sent to the sidebar or saved.
 
+## Updating Worktabs
+
+At start and twice a day after it, Worktabs asks GitHub for its newest release. When there is a newer one, "Worktabs <version> is available" appears at the top of the sidebar. "Check for a new version of Worktabs" under "…" asks at once. Builds you made yourself do not ask.
+
+- "Release notes" opens the release on GitHub. "Skip this version" stops offering that version (the menu still finds it).
+- "Update" downloads the zip of the release, checks it against `SHA256SUMS.txt`, and extracts it next to the app. The app keeps running meanwhile.
+- Then the card says the new version is ready. It installs the next time Worktabs quits. "Restart now" waits until no tab is working or waiting for approval and there are no unsaved edits, then quits and starts the new version. The tabs come back as after any restart.
+- After Worktabs quits, a small script waits for it and for everything started from its folder to exit, moves the app aside, moves the new one in, and deletes the old one. If it cannot, the previous version stays, and the card says why at the next start.
+
+It replaces the folder or `Worktabs.app` the app runs from, so the installer and the SmartScreen warning are not needed. On Windows, the entry in "Apps & features" shows the new version, and the uninstaller stays. The app cannot update itself when it cannot write to the folder that holds it (for example, if you installed it under Program Files), or on macOS when it runs from where macOS moved it (start it from Applications after removing the mark, [install.md](install.md#macos-zip)). The card then links to the release page to update by hand.
+
+`updateCheck: false` turns off the checks at start ([config.md](config.md)).
+
 ## Updating code-server and extensions
 
 Use **Settings > Extensions** (the gear at the top of the sidebar, or **Extensions and updates** in the update card) to see sources and versions, import desktop extensions or VSIX files, and check for updates. Claude stays on Open VSX by default. Codex uses a user-provided import. Desktop imports need periodic updates in VS Code and re-importing; VSIX imports need newer files. These are local-source checks, not global Marketplace notifications ([extensions.md](extensions.md)). Updates wait for Claude and Codex turns to finish and edits to be saved. If Worktabs cannot see whether Codex is working in a tab, the sidebar asks you to close that tab first. Idle instances stop before shared extensions change.

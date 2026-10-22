@@ -105,6 +105,8 @@ const state = {
   filter: '',
   // Updates of code-server and the extensions: { status, items, detail, busy } (see main.js).
   update: null,
+  // A new version of Worktabs itself: { status, version, from, detail, busy } (self-update.js).
+  appUpdate: null,
   // Worktrees being removed (lowercase folder paths).
   removing: new Set(),
   // Provider-specific usage views from the main process. Both percentages mean used.
@@ -127,6 +129,7 @@ const AGENT_LABELS = {
 };
 
 const updateEl = document.getElementById('update');
+const appUpdateEl = document.getElementById('app-update');
 const filterEl = /** @type {HTMLInputElement} */ (document.getElementById('filter'));
 const usageEl = document.getElementById('usage');
 
@@ -504,6 +507,7 @@ function forgetPulls() {
 // ---- Updates and subscription usage ----------------------------------------------------
 
 const updateCard = createUpdateCard({ element: updateEl, host: window.host, dom: { el }, t, listText });
+const appUpdateCard = createAppUpdateCard({ element: appUpdateEl, host: window.host, dom: { el }, t, listText });
 const usageFooter = createUsageFooter({ element: usageEl, dom: { el }, t });
 
 // ---- Top --------------------------------------------------------------------------------
@@ -599,6 +603,7 @@ function render() {
 }
 
 function renderNow() {
+  appUpdateCard.render(state.appUpdate);
   updateCard.render(state.update);
   usageFooter.render(state);
   renderSummary();
@@ -623,6 +628,7 @@ function takeTabState(tabState) {
   state.tabsKnown = true;
   state.tabs = tabState.tabs;
   state.update = tabState.update;
+  state.appUpdate = tabState.appUpdate || null;
   state.removing = new Set(tabState.removing);
   state.cloning = new Set(tabState.cloning || []);
   state.repoUsed = tabState.repoUsed;

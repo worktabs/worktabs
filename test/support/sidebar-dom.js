@@ -294,6 +294,7 @@ function makeDocument() {
   add(header, 'button', 'add');
   add(header, 'button', 'settings');
   add(header, 'button', 'more');
+  add(body, 'section', 'app-update');
   add(body, 'section', 'update');
   const filterBox = add(body, 'div');
   add(filterBox, 'input', 'filter');

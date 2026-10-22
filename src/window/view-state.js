@@ -14,12 +14,13 @@ function windowTitle(counts) {
 }
 
 // `lifecycle`: TabLifecycle (its tabs, order, ports and the tab in front). `sessions`:
-// ConversationStore. `tabAgent(tab)`: the tab's agent. `update()`: the update's state.
+// ConversationStore. `tabAgent(tab)`: the tab's agent. `update()`: the update's state, and
+// `appUpdate()` that of Worktabs itself.
 // `removing`, `cloning`: Sets of worktrees being removed and repositories being cloned.
 // `repoUsed()`: tab-store.js's. `agents()`: the agents turned on. `usage`, `codexUsage`: their
 // trackers. `theme()`: the colors of the tab in front. `views()`: { win, sidebar, emptyView },
 // once the window is made. `schedule`: when a burst of pushes goes (coalesce in util.js).
-function createViewState({ lifecycle, sessions, tabAgent, update, removing, cloning, repoUsed, agents,
+function createViewState({ lifecycle, sessions, tabAgent, update, appUpdate = () => ({ status: 'none' }), removing, cloning, repoUsed, agents,
   usage, codexUsage, theme, views, schedule = setImmediate }) {
   function viewState() {
     const enabled = agents();
@@ -45,6 +46,7 @@ function createViewState({ lifecycle, sessions, tabAgent, update, removing, clon
         };
       }),
       update: update(),
+      appUpdate: appUpdate(),
       removing: [...removing],
       cloning: [...cloning],
       repoUsed: repoUsed(),
