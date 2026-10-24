@@ -63,7 +63,7 @@ const { SeenConversations } = require('./conversations/seen-conversations');
 const { displayLocale, language, messages, resolveLanguage, setLanguage, t, withLanguagePack } = require('./i18n');
 const { downloadRelease, ensureCodeServer } = require('./code-server/install');
 const { installWrapper } = require('./agents/mac-claude-wrap');
-const { agentExtensions, effectiveBranchAgent, isAgentExtension, managedAgentSettings, normalizeAgent } = require('./agents/agents');
+const { AGENTS, agentExtensions, effectiveBranchAgent, isAgentExtension, managedAgentSettings, normalizeAgent } = require('./agents/agents');
 const { settingsDialog } = require('./window/message-box');
 const { createDialogView } = require('./window/dialog-view');
 const { createCloseGuard } = require('./window/window-close');
@@ -72,7 +72,7 @@ const { createThemeState } = require('./window/theme-state');
 const { createViewState } = require('./window/view-state');
 const { parseLaunchArgs } = require('./conversations/notifications');
 const { ChatWidths } = require('./conversations/secondary-sidebar');
-const { WEBVIEW_FRAME, shownConversations, visibleCodexFrames } = require('./conversations/chat-frames');
+const { WEBVIEW_FRAME, agentChatFrames, shownConversations, visibleCodexFrames } = require('./conversations/chat-frames');
 const { createChatPanel } = require('./conversations/chat-panel');
 const { createHelperClient } = require('./tabs/helper-client');
 const { hostKeyAction } = require('./window/host-keys');
@@ -82,6 +82,7 @@ const { SettingsSync } = require('./code-server/settings-sync');
 const { applyShellEnv, readShellEnv } = require('./shell-env');
 const { TabLifecycle } = require('./tabs/tab-lifecycle');
 const { closeTabPage, createTabViews } = require('./tabs/tab-view');
+const { createChatStartupWatch } = require('./conversations/chat-startup');
 const { createWebviewSites } = require('./tabs/webview-sites');
 const { StartupGate } = require('./tabs/startup-gate');
 const { createAppUpdates } = require('./code-server/app-updates');
@@ -363,7 +364,31 @@ const createTabView = createTabViews({
   folderFromUrl: (url) => codeServers.all().map((manager) => manager.folderFromUrl(url)).find(Boolean),
   openTab, openExternal: (url) => shell.openExternal(url), hostKeys: handleHostKeys,
   current: (tab) => lifecycle.current(tab), approvalMode: () => config.codexApprovalMode, changed: pushState,
+  chatLoaded: (tab, agent) => chatStartupWatch.watch(tab, agent),
 });
+
+// An agent chat that does not start in a tab is told once for each version of its extension,
+// with the previous version to go back to (chat-startup.js).
+const chatStartupWatch = createChatStartupWatch({
+  current: (tab) => lifecycle.current(tab), chatFrames: (tab, agent) => agentChatFrames(tab.view.webContents, agent),
+  versions: agentExtensionVersions, ask: messageBox,
+  rollback: (id) => rollbackExtension(id, localTarget()), reload: reloadTab, log: (line) => logUpdate(`chat: ${line}`),
+});
+
+// The version of the agent's extension that a tab runs, and the previous one that Settings can go
+// back to: only for an extension imported for this machine. A WSL tab runs the extensions of
+// another target, so neither is known there.
+function agentExtensionVersions(tab, agent) {
+  const id = AGENTS[agent].extension.toLowerCase();
+  if (parseWslPath(tab.folder)) return { id, version: '', previous: null };
+  const record = extensionImports.records(localTarget()).find((item) => item.id === id);
+  if (record) return { id, version: record.version, previous: record.previous?.version || null };
+  try {
+    return { id, version: localExtensions(config.resolvedExtensionsDir).find((item) => item.id === id)?.version || '', previous: null };
+  } catch {
+    return { id, version: '', previous: null };
+  }
+}
 
 // Electron and app services adapt the lifecycle's small operations here. They do not decide
 // whether an asynchronous result still belongs to a tab or to its current server start.
@@ -844,9 +869,9 @@ const conversationOpening = createConversationOpening({
   tabs, helpers, sessions, activeId: () => lifecycle.activeId, runFor: (id) => lifecycle.runs.get(id),
   activateTab, callHelper, readTheme, startFirstConversation, showAgentChat,
   focused: () => Boolean(win?.isFocused()), messageBox, pushState, refreshSeen: () => seenConversations.refresh(),
-  read: async (tab) => {
+  read: async (tab, threadId) => {
     const frames = await visibleCodexFrames(tab.view.webContents);
-    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript()).catch(() => null)));
+    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript(threadId)).catch(() => null)));
   },
 });
 

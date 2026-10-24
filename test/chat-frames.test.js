@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const vm = require('node:vm');
 const { VISIBLE_CHAT_FRAMES_SCRIPT } = require('../src/conversations/seen-conversations');
-const { CHAT_FOCUS_GUARD, chatAgent, codexChatFrames, isClaudeChatFrame, isCodexChatFrame, pageFocusScript, shownConversations, visibleCodexFrames } = require('../src/conversations/chat-frames');
+const { CHAT_FOCUS_GUARD, agentChatFrames, chatAgent, codexChatFrames, isClaudeChatFrame, isCodexChatFrame, pageFocusScript, shownConversations, visibleCodexFrames } = require('../src/conversations/chat-frames');
 
 // A chat frame for the focus guard to run in. `top`: what window.top.document.hasFocus() answers,
 // or 'cross-site' for a chat that may not read the page.
@@ -87,6 +87,9 @@ test('only the Codex chats in view are found', async () => {
   const contents = page([shownHost, shown, hiddenHost, hidden, claude], [shownHost.url, claude.parent.url]);
   assert.deepEqual(await visibleCodexFrames(contents), [shown]);
   assert.deepEqual(codexChatFrames(contents), [shown, hidden]);
+  assert.deepEqual(agentChatFrames(contents, 'codex'), [shown, hidden]);
+  assert.deepEqual(agentChatFrames(contents, 'claude'), [claude]);
+  assert.deepEqual(agentChatFrames({ get mainFrame() { throw new Error('Object has been destroyed'); } }, 'codex'), []);
 });
 
 test('the conversations shown leave out a chat that left the view while it was asked', async () => {

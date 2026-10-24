@@ -41,12 +41,40 @@ test('existing drafts, history threads, remote hosts, hidden or unfocused editor
   }
 });
 
-test('the injected script uses the mounted tree and preserves literal task text', () => {
+// A page's globals for the scripts that wait in it: its document, a MutationObserver that
+// `change()` calls back, and the timers.
+function pageContext(document) {
+  const observers = [];
+  class MutationObserver {
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe() {}
+    disconnect() { observers.splice(observers.indexOf(this), 1); }
+  }
+  const page = { document, MutationObserver, setTimeout, clearTimeout, setInterval, clearInterval,
+    change: () => [...observers].forEach((observer) => observer.callback([])), observers };
+  page.window = page;
+  return page;
+}
+
+test('the injected script uses the mounted tree and preserves literal task text', async () => {
   const ui = composer();
   const prompt = 'Task ` ${value} \n日本語';
-  const answer = vm.runInNewContext(codexTaskScript(prompt), { document: ui.document });
+  const answer = await vm.runInNewContext(codexTaskScript(prompt), pageContext(ui.document));
   assert.equal(answer.filled, true);
   assert.equal(ui.editor.innerText, prompt);
+});
+
+test('the injected script waits in the page for the composer, and gives up after its wait', async () => {
+  const ui = composer({ hidden: true });
+  const page = pageContext(ui.document);
+  const answer = vm.runInNewContext(codexTaskScript('Task', 5000), page);
+  ui.editor.checkVisibility = () => true;
+  page.change();
+  // Objects made in the page's context compare by their JSON.
+  assert.equal(JSON.stringify(await answer), '{"filled":true}');
+  assert.equal(page.observers.length, 0);
+  const missing = composer({ hidden: true });
+  assert.equal(JSON.stringify(await vm.runInNewContext(codexTaskScript('Task', 30), pageContext(missing.document))), '{"filled":false,"reason":"unknown-composer"}');
 });
 
 test('unknown props and rejected native input give a recovery result', () => {
@@ -57,23 +85,32 @@ test('unknown props and rejected native input give a recovery result', () => {
   assert.equal(prefillCodexTask(rejected.document, 'Task', rejected.propsOf).reason, 'input-rejected');
 });
 
-// A clock that moves on only while startTaskConversation pauses, a quarter of a second at a time.
+// A clock that moves on only while the task waits: in the chat's page (`spend`), or for a frame to
+// load, a second at most (`pause`).
 function clock() {
   let time = 0;
-  return { now: () => time, pause: async () => { time += 250; } };
+  return { now: () => time, spend: (ms) => { time += ms; }, pause: async () => { time += 1000; } };
 }
 
-test('startup retries wait for a composer, stop after success, and recover on timeout', async () => {
+test("the task waits in the chat's page, ten seconds at a time, stops once it is in, and recovers when the minute is up", async () => {
   for (const ready of [true, false]) {
-    let fills = 0, recovered = 0;
+    let recovered = 0;
+    const waits = [];
+    const time = clock();
     await startTaskConversation({ agent: 'codex', prompt: 'Task', open: async () => ({ opened: true }), current: () => true,
-      fill: async () => ({ filled: ++fills === 2 && ready }), recover: async () => { recovered++; }, ...clock(), wait: 750 });
-    assert.equal(fills, ready ? 2 : 3);
+      fill: async (wait) => {
+        waits.push(wait);
+        if (ready && waits.length === 2) return { filled: true };
+        time.spend(wait);
+        return { filled: false, reason: 'unknown-composer' };
+      },
+      recover: async () => { recovered++; }, now: time.now, pause: () => assert.fail('The page answered'), wait: 55000 });
+    assert.deepEqual(waits, ready ? [10000, 10000] : [10000, 10000, 10000, 10000, 10000, 5000]);
     assert.equal(recovered, ready ? 0 : 1);
   }
 });
 
-test('the task waits up to a minute for a Codex chat that starts late', async () => {
+test('the task waits up to a minute for a Codex chat that starts late, asking again as frames load', async () => {
   for (const starts of [10000, null]) {
     let recovered = 0, fills = 0;
     const time = clock();
@@ -82,16 +119,17 @@ test('the task waits up to a minute for a Codex chat that starts late', async ()
       recover: async () => { recovered++; }, ...time });
     assert.equal(recovered, starts === null ? 1 : 0);
     assert.equal(time.now(), starts ?? 60000);
-    assert.equal(fills, starts === null ? 240 : 41);
+    assert.equal(fills, starts === null ? 60 : 11);
   }
 });
 
 test('a failed open or changed draft recovers once, and canceled starts do nothing', async () => {
   for (const mode of ['open-failed', 'draft', 'canceled', 'canceled-during-fill']) {
     let recovered = 0, fills = 0, current = mode !== 'canceled';
-    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => current, ...clock(), wait: 250,
+    const time = clock();
+    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => current, ...time, wait: 250,
       open: async () => ({ opened: mode !== 'open-failed' }),
-      fill: async () => { fills++; if (mode === 'canceled-during-fill') current = false; return { reason: 'existing-draft' }; },
+      fill: async (wait) => { fills++; time.spend(wait); if (mode === 'canceled-during-fill') current = false; return { reason: 'existing-draft' }; },
       recover: async () => { recovered++; } });
     assert.equal(fills, ['draft', 'canceled-during-fill'].includes(mode) ? 1 : 0);
     assert.equal(recovered, ['open-failed', 'draft'].includes(mode) ? 1 : 0);

@@ -3,7 +3,18 @@ const test = require('node:test');
 const vm = require('node:vm');
 const { visibleCodexThread, codexNavigationScript, confirmCodexThread } = require('../src/conversations/conversation-navigation');
 
-test('navigation identifies the mounted local thread even while permission controls are disabled', () => {
+// A page's globals for the scripts that wait in it, with a MutationObserver that `change()` calls
+// back.
+function pageContext(document) {
+  let observer = null;
+  const page = { document, setTimeout, clearTimeout, setInterval, clearInterval,
+    MutationObserver: class { constructor(callback) { observer = callback; } observe() {} disconnect() {} },
+    change: () => observer?.([]) };
+  page.window = page;
+  return page;
+}
+
+test('navigation identifies the mounted local thread even while permission controls are disabled', async () => {
   const node = { disabled: true, checkVisibility: () => true };
   const props = { hostId: 'local', conversationId: 'thread' };
   const root = { memoizedProps: props, child: { stateNode: node } };
@@ -11,12 +22,28 @@ test('navigation identifies the mounted local thread even while permission contr
   node.__reactFiber$test = { return: root };
   const document = { querySelectorAll: () => [node] };
   assert.equal(visibleCodexThread(document, () => [props]), 'thread');
-  assert.equal(vm.runInNewContext(codexNavigationScript(), { document }), 'thread');
+  assert.equal(await vm.runInNewContext(codexNavigationScript('thread'), pageContext(document)), 'thread');
   for (const invalid of [{ hostId: 'remote', conversationId: 'thread' }, { hostId: 'local', conversationId: null }, {}]) {
     assert.equal(visibleCodexThread(document, () => [invalid]), null);
   }
   node.checkVisibility = () => false;
   assert.equal(visibleCodexThread(document, () => [props]), null);
+});
+
+test('the check waits in the page for the requested thread, and gives the one shown after its wait', async () => {
+  const props = { hostId: 'local', conversationId: 'previous' };
+  const node = { checkVisibility: () => true };
+  const root = { memoizedProps: props, child: { stateNode: node } };
+  root.stateNode = { current: root };
+  node.__reactFiber$test = { return: root };
+  const document = { querySelectorAll: () => [node] };
+  const page = pageContext(document);
+  const shown = vm.runInNewContext(codexNavigationScript('thread', 5000), page);
+  props.conversationId = 'thread';
+  page.change();
+  assert.equal(await shown, 'thread');
+  props.conversationId = 'previous';
+  assert.equal(await vm.runInNewContext(codexNavigationScript('thread', 30), pageContext(document)), 'previous');
 });
 
 test('navigation waits for the exact thread instead of accepting another thread or an ambiguous panel', async () => {
@@ -29,8 +56,15 @@ test('navigation waits for the exact thread instead of accepting another thread 
 test('a blank, rejected, or stuck renderer reaches the deadline without marking navigation successful', async () => {
   for (const read of [async () => [null], async () => { throw Error('Gone'); }, () => new Promise(() => {})]) {
     assert.equal(await confirmCodexThread({ threadId: 'thread', current: () => true, read,
-      pause: () => new Promise((resolve) => setTimeout(resolve, 1)), timeout: 5 }), false);
+      pause: () => new Promise((resolve) => setTimeout(resolve, 1)), timeout: 5, readTimeout: 2 }), false);
   }
+});
+
+test('a read never answered is made again', async () => {
+  let reads = 0;
+  assert.equal(await confirmCodexThread({ threadId: 'thread', current: () => true, readTimeout: 5,
+    read: () => (++reads === 1 ? new Promise(() => {}) : Promise.resolve(['thread'])), pause: async () => {} }), true);
+  assert.equal(reads, 2);
 });
 
 test('a fresh official webview can finish loading before navigation falls back', async () => {

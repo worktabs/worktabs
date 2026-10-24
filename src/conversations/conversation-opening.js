@@ -43,7 +43,7 @@ function createConversationOpening({ tabs, helpers, sessions, activeId, runFor, 
       sessionId: conversation.threadId || sessionId, agent: conversation.agent || 'claude',
     }, { result: true });
     const opened = codex && answer?.opened ? await confirmCodexThread({ threadId: conversation.threadId, current,
-      read: () => read(tab), pause,
+      read: () => read(tab, conversation.threadId), pause,
     }) : answer?.opened;
     if (opened && (!codex || current()) && tabs.get(tabId) === tab && activeId() === tabId && focused()) {
       if (sessions.markSeen(tabId, sessionId)) pushState();

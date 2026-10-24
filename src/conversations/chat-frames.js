@@ -65,6 +65,16 @@ function codexChatFrames(contents) {
   return contents.mainFrame.framesInSubtree.filter(isCodexChatFrame);
 }
 
+// The chats of `agent` ('claude' or 'codex') in the page, in view or not; none once the page has
+// gone.
+function agentChatFrames(contents, agent) {
+  try {
+    return contents.mainFrame.framesInSubtree.filter((frame) => chatAgent(frame) === agent);
+  } catch {
+    return [];
+  }
+}
+
 // The frames of the page whose webview is in view (VISIBLE_CHAT_FRAMES_SCRIPT names their host
 // frames). Rejects when the page cannot be asked.
 async function visibleFrames(contents) {
@@ -93,6 +103,7 @@ async function shownConversations(contents) {
 module.exports = {
   CHAT_FOCUS_GUARD,
   WEBVIEW_FRAME,
+  agentChatFrames,
   chatAgent,
   codexChatFrames,
   isAgentChatFrame,
