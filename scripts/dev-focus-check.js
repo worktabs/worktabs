@@ -38,11 +38,20 @@ run(async () => {
   await until('server running', async () => (await call('state')).tabs.find((t) => t.id === id)?.server === 'running');
 
   await openClaudePanel(id);
-  await until('the helper extension', () => call('helper', { id, route: '/new-conversation' }), 60000, 2000);
+  // A chat on an editor tab too, from the command palette, as the helper's /new-conversation
+  // without a prompt only focuses the side bar chat.
+  if (!(await inChats(id, 'chat')).includes('editor')) {
+    await call('key', { id, keyCode: 'F1' });
+    await until('the command palette', () => call('eval', { id, js: `!!document.querySelector('.quick-input-widget input')?.checkVisibility()` }), 10000, 200);
+    await call('insertText', { id, text: 'Claude Code: Open in New Tab' });
+    await sleep(800);
+    await call('key', { id, keyCode: 'Enter' });
+  }
   await until('chats in the side bar and on an editor tab', async () => {
     const chats = await inChats(id, 'chat');
     return chats.includes('sidebar') && chats.includes('editor');
   }, 60000, 1000);
+  await until('the helper extension', () => call('helper', { id, route: '/new-conversation' }), 60000, 2000);
   // VS Code gives the side bar chat the focus, and the chat moves it to its input.
   await until('the focus in the side bar chat input', async () => {
     const { sidebar } = await focusState(id);
@@ -51,15 +60,20 @@ run(async () => {
   log('side bar chat input has the focus');
 
   await inChats(id, `(window.__focusCount = 0, window.addEventListener('focus', () => window.__focusCount++), true)`);
-  // In one go: the editor chat's window gets the focus, then the side bar chat's.
+  // In one go: the editor chat's window gets the focus, then the side bar chat's. The chats are
+  // on sites of their own (tab-preload.js), so the page cannot read them; it finds them by their
+  // host frame's address, and reaches the chat page in it (its first frame), whose focus() a
+  // page on another site may still call.
   const moved = await call('eval', {
     id,
     js: `(() => {
       const chats = {};
       for (const outer of document.querySelectorAll('iframe')) {
-        const inner = outer.contentDocument?.getElementById('active-frame')?.contentWindow;
-        if (!inner?.document.querySelector('[aria-label="Message input"]')) continue;
-        chats[new URL(outer.src).searchParams.get('purpose') === 'webviewView' ? 'sidebar' : 'editor'] = inner;
+        const address = new URL(outer.src, location.href);
+        if (address.searchParams.get('extensionId')?.toLowerCase() !== 'anthropic.claude-code') continue;
+        const inner = outer.contentWindow?.[0];
+        if (!inner) continue;
+        chats[address.searchParams.get('purpose') === 'webviewView' ? 'sidebar' : 'editor'] = inner;
       }
       if (!chats.sidebar || !chats.editor) return false;
       chats.editor.focus();
