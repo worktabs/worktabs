@@ -3,7 +3,7 @@
 // fakes test it.
 const { t } = require('../i18n');
 const { unproxiedUrl } = require('../code-server/code-server');
-const { CHAT_FOCUS_GUARD, isClaudeChatFrame, isCodexChatFrame } = require('../conversations/chat-frames');
+const { CHAT_FOCUS_GUARD, isClaudeChatFrame, isCodexChatFrame, pageFocusScript } = require('../conversations/chat-frames');
 const { codexApprovalScript } = require('../codex/codex-approval');
 const { codexOnboardingScript } = require('../agents/agent-onboarding');
 
@@ -28,12 +28,26 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
     // VS Code asks for close confirmation through beforeunload; the tab bar decides instead.
     contents.on('will-prevent-unload', (event) => event.preventDefault());
     contents.on('before-input-event', (event, input) => hostKeys(event, input, contents));
+    // The Claude Code chats, on sites of their own, are told whether the page has the focus.
+    const tellClaudeChats = () => {
+      try {
+        const script = pageFocusScript(contents.isFocused());
+        for (const frame of contents.mainFrame.framesInSubtree) {
+          if (isClaudeChatFrame(frame)) frame.executeJavaScript(script).catch(() => {});
+        }
+      } catch { /* The page has gone. */ }
+    };
+    contents.on('focus', tellClaudeChats);
+    contents.on('blur', tellClaudeChats);
     // Each Claude Code chat gets the focus guard when its frame loads (VS Code replaces the frame
     // when the chat's page changes).
     contents.on('did-frame-finish-load', (_event, isMainFrame, processId, routingId) => {
       if (isMainFrame) return;
       const frame = frameOf(processId, routingId);
-      if (frame && isClaudeChatFrame(frame)) frame.executeJavaScript(CHAT_FOCUS_GUARD).catch(() => {});
+      if (frame && isClaudeChatFrame(frame)) {
+        frame.executeJavaScript(pageFocusScript(contents.isFocused())).catch(() => {});
+        frame.executeJavaScript(CHAT_FOCUS_GUARD).catch(() => {});
+      }
       if (frame && isCodexChatFrame(frame)) {
         if (tab.linkedWorktree) frame.executeJavaScript(codexOnboardingScript()).catch(() => {});
         frame.executeJavaScript(codexApprovalScript(approvalMode())).catch(() => {});

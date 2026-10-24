@@ -2,14 +2,17 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const { closeTabPage, createTabViews } = require('../src/tabs/tab-view');
-const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME } = require('../src/conversations/chat-frames');
+const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME, pageFocusScript } = require('../src/conversations/chat-frames');
 const { codexApprovalScript } = require('../src/codex/codex-approval');
 const { codexOnboardingScript } = require('../src/agents/agent-onboarding');
 
-function setup({ open = true, frame = null } = {}) {
+function setup({ open = true, frame = null, frames = [] } = {}) {
   const calls = [];
   const contents = new EventEmitter();
   contents.getURL = () => 'http://127.0.0.1:5001/?folder=/src/app';
+  contents.focused = false;
+  contents.isFocused = () => contents.focused;
+  contents.mainFrame = { framesInSubtree: frames };
   contents.setWindowOpenHandler = (handler) => { contents.openHandler = handler; };
   const createTabView = createTabViews({
     makeView: () => ({ webContents: contents }),
@@ -62,7 +65,23 @@ test('a Claude chat frame gets the focus guard, and the main frame nothing', () 
   assert.deepEqual(calls, []);
   contents.emit('did-frame-finish-load', {}, false, 1, 2);
   assert.deepEqual(calls, [['frame', 1, 2]]);
-  assert.deepEqual(scripts, [CHAT_FOCUS_GUARD]);
+  assert.deepEqual(scripts, [pageFocusScript(false), CHAT_FOCUS_GUARD]);
+});
+
+test('the Claude chats are told when the page gets and loses the focus, which they cannot read from their own site', () => {
+  const claude = [];
+  const codex = [];
+  const { createTabView, contents } = setup({ frames: [chatFrame('Anthropic.claude-code', claude), chatFrame('openai.chatgpt', codex)] });
+  createTabView({ id: 't1' });
+  contents.focused = true;
+  contents.emit('focus');
+  contents.focused = false;
+  contents.emit('blur');
+  assert.deepEqual(claude, [pageFocusScript(true), pageFocusScript(false)]);
+  assert.deepEqual(codex, []);
+  // A page that has gone answers no more.
+  Object.defineProperty(contents, 'mainFrame', { get: () => { throw new Error('destroyed'); } });
+  assert.doesNotThrow(() => contents.emit('focus'));
 });
 
 test('a Codex chat frame gets the approval mode, and in a linked worktree the onboarding too', () => {

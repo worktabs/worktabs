@@ -57,23 +57,42 @@ test('unknown props and rejected native input give a recovery result', () => {
   assert.equal(prefillCodexTask(rejected.document, 'Task', rejected.propsOf).reason, 'input-rejected');
 });
 
+// A clock that moves on only while startTaskConversation pauses, a quarter of a second at a time.
+function clock() {
+  let time = 0;
+  return { now: () => time, pause: async () => { time += 250; } };
+}
+
 test('startup retries wait for a composer, stop after success, and recover on timeout', async () => {
   for (const ready of [true, false]) {
     let fills = 0, recovered = 0;
     await startTaskConversation({ agent: 'codex', prompt: 'Task', open: async () => ({ opened: true }), current: () => true,
-      fill: async () => ({ filled: ++fills === 2 && ready }), recover: async () => { recovered++; }, pause: async () => {}, attempts: 3 });
+      fill: async () => ({ filled: ++fills === 2 && ready }), recover: async () => { recovered++; }, ...clock(), wait: 750 });
     assert.equal(fills, ready ? 2 : 3);
     assert.equal(recovered, ready ? 0 : 1);
+  }
+});
+
+test('the task waits up to a minute for a Codex chat that starts late', async () => {
+  for (const starts of [10000, null]) {
+    let recovered = 0, fills = 0;
+    const time = clock();
+    await startTaskConversation({ agent: 'codex', prompt: 'Task', open: async () => ({ opened: true }), current: () => true,
+      fill: async () => { fills++; return starts !== null && time.now() >= starts ? { filled: true } : null; },
+      recover: async () => { recovered++; }, ...time });
+    assert.equal(recovered, starts === null ? 1 : 0);
+    assert.equal(time.now(), starts ?? 60000);
+    assert.equal(fills, starts === null ? 240 : 41);
   }
 });
 
 test('a failed open or changed draft recovers once, and canceled starts do nothing', async () => {
   for (const mode of ['open-failed', 'draft', 'canceled', 'canceled-during-fill']) {
     let recovered = 0, fills = 0, current = mode !== 'canceled';
-    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => current, attempts: 1,
+    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => current, ...clock(), wait: 250,
       open: async () => ({ opened: mode !== 'open-failed' }),
       fill: async () => { fills++; if (mode === 'canceled-during-fill') current = false; return { reason: 'existing-draft' }; },
-      recover: async () => { recovered++; }, pause: async () => {} });
+      recover: async () => { recovered++; } });
     assert.equal(fills, ['draft', 'canceled-during-fill'].includes(mode) ? 1 : 0);
     assert.equal(recovered, ['open-failed', 'draft'].includes(mode) ? 1 : 0);
   }
@@ -89,9 +108,9 @@ test('Claude keeps its helper prefill path and empty Codex tasks only open chat'
 test('failed bridge and renderer promises preserve the copy-task recovery', async () => {
   for (const phase of ['open', 'fill']) {
     let recovered = 0;
-    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => true, attempts: 1,
+    await startTaskConversation({ agent: 'codex', prompt: 'Task', current: () => true, ...clock(), wait: 250,
       open: async () => { if (phase === 'open') throw Error('Bridge gone'); return { opened: true }; },
-      fill: async () => { throw Error('Renderer gone'); }, pause: async () => {}, recover: async () => { recovered++; } });
+      fill: async () => { throw Error('Renderer gone'); }, recover: async () => { recovered++; } });
     assert.equal(recovered, 1);
   }
 });

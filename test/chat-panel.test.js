@@ -24,18 +24,18 @@ function tabOf(id, folder, answers = {}) {
   };
 }
 
-function setup(tabList) {
+function setup(tabList, { agent = 'claude', helper = true } = {}) {
   const calls = [];
   const chatWidths = new ChatWidths();
   const panel = createChatPanel({
     tabs: new Map(tabList.map((tab) => [tab.id, tab])),
     runs: () => 'run',
     tabIdFor: (folder) => (folder === repo ? 'primary' : folder),
-    tabAgent: () => 'claude',
+    tabAgent: () => agent,
     chatWidths,
     saveTabs: () => calls.push('save'),
-    callHelper: async (...args) => { calls.push(['helper', ...args]); return true; },
-    messageBox: async () => ({ response: 0 }),
+    callHelper: async (...args) => { calls.push(['helper', ...args]); return helper; },
+    messageBox: async (options) => { calls.push(['dialog', options.detail]); return { response: 0 }; },
     copy: (text) => calls.push(['copy', text]),
     late: () => new Promise(() => {}),
   });
@@ -71,4 +71,11 @@ test('the agent chat replaces only the built-in chat', async () => {
   assert.deepEqual(calls, []);
   await panel.showAgentChat(shown);
   assert.deepEqual(calls[0], ['helper', 'w', '/show-chat', { agent: 'claude' }]);
+});
+
+test("the task's dialog names the agent as the app does", async () => {
+  const tab = tabOf('w', path.resolve('repo-fix'), { width: { chat: 300, shared: 1200 } });
+  const { panel, calls } = setup([tab], { helper: null });
+  await panel.startFirstConversation(tab, 'Fix the bug');
+  assert.match(calls.find((call) => call[0] === 'dialog')[1], /^Open a new Claude Code conversation/);
 });

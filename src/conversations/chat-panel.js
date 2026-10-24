@@ -13,7 +13,7 @@ const {
   resizeScript,
   secondaryView,
 } = require('./secondary-sidebar');
-const { agentLabel } = require('./session-notices');
+const { AGENTS } = require('../agents/agents');
 const { samePath } = require('../util');
 
 const isPrimary = (tab) => Boolean(tab.repo) && samePath(tab.repo, tab.folder);
@@ -55,7 +55,7 @@ function createChatPanel({ tabs, runs, tabIdFor, tabAgent, chatWidths, saveTabs,
         await callHelper(tab.id, '/show-chat', { agent });
         if (!current()) return;
         const answer = await messageBox({ type: 'warning', message: t('The task could not be put in the new conversation.'),
-          detail: t('Open a new {agent} conversation and paste this task. Worktabs has not sent it.\n\n{prompt}', { agent: agentLabel(agent), prompt: prompt || '' }),
+          detail: t('Open a new {agent} conversation and paste this task. Worktabs has not sent it.\n\n{prompt}', { agent: AGENTS[agent].label, prompt: prompt || '' }),
           buttons: prompt ? [t('Close'), t('Copy task')] : [t('Close')], defaultId: 0, cancelId: 0 });
         if (answer.response === 1) copy(prompt);
       },
