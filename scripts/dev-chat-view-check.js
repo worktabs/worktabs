@@ -64,8 +64,9 @@ run(async () => {
   // hidden window (WORKTABS_HIDDEN).
   await call('eval', { id: first.id, js: `document.querySelector('.part.auxiliarybar .codicon-auxiliarybar-close')?.click()` });
   await until('side bar closed', async () => (await shown(first.id)) === 'hidden', 10000, 300);
-  // Let the workbench save its layout, as it does when the page goes away.
-  await sleep(2000);
+  // VS Code saves its layout every 5 seconds and when its page loses the focus, not as the page
+  // goes away. The page of a hidden window never has the focus, so wait for the 5 seconds.
+  await sleep(6000);
   await call('close', { id: first.id });
   log('closed the side bar and the tab');
 

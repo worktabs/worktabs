@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
-const { createTabViews } = require('../src/tabs/tab-view');
+const { closeTabPage, createTabViews } = require('../src/tabs/tab-view');
 const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME } = require('../src/conversations/chat-frames');
 const { codexApprovalScript } = require('../src/codex/codex-approval');
 const { codexOnboardingScript } = require('../src/agents/agent-onboarding');
@@ -92,4 +92,33 @@ test('a page process that ends shows on its open tab only', () => {
   closed.createTabView(gone);
   closed.contents.emit('render-process-gone', {}, { reason: 'crashed' });
   assert.equal(gone.error, undefined);
+});
+
+// A page that records when it is closed, against a clock the waits move on.
+function closingPage() {
+  const events = [];
+  let destroyed = false;
+  let at = 0;
+  return {
+    events,
+    destroy: () => { destroyed = true; },
+    contents: { isDestroyed: () => destroyed, close: () => { events.push(['close', at]); destroyed = true; } },
+    sleep: async (ms) => { at += ms; events.push(['wait', ms]); },
+  };
+}
+
+test('a tab\'s page is closed a moment after it leaves the window, so that VS Code can save its state', async () => {
+  const page = closingPage();
+  await closeTabPage(page.contents, { sleep: page.sleep });
+  assert.deepEqual(page.events, [['wait', 500], ['close', 500]]);
+});
+
+test('a page that has gone meanwhile, or before, is not closed again', async () => {
+  const meanwhile = closingPage();
+  await closeTabPage(meanwhile.contents, { sleep: async (ms) => { await meanwhile.sleep(ms); meanwhile.destroy(); } });
+  assert.deepEqual(meanwhile.events, [['wait', 500]]);
+  const before = closingPage();
+  before.destroy();
+  await closeTabPage(before.contents, { sleep: before.sleep });
+  assert.deepEqual(before.events, []);
 });

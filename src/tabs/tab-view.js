@@ -48,4 +48,15 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
   };
 }
 
-module.exports = { createTabViews };
+// Closes a tab's page a moment after it has left the window. VS Code web saves its state (the side
+// bar and panel layout, the open editors) to IndexedDB every 5 seconds and when its page loses
+// the focus, not as the page goes away: with code-server 4.143.1, what it starts saving on
+// beforeunload is never written. A page that leaves the window, or whose window closes, loses the
+// focus, and stays for `settle` so that the save that starts can finish. Resolves once closed.
+async function closeTabPage(contents, { settle = 500, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  if (contents.isDestroyed()) return;
+  await sleep(settle);
+  if (!contents.isDestroyed()) contents.close();
+}
+
+module.exports = { closeTabPage, createTabViews };
