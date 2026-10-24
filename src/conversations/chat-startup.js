@@ -6,13 +6,23 @@
 // one. Electron's frames and the dialog are injected, so fakes test it.
 const { t } = require('../i18n');
 const { AGENTS } = require('../agents/agents');
+const { waitInPage } = require('./page-wait');
 
-// A chat's page has started once React has put its own elements in #root, in place of what the
-// page comes with (Codex's startup loader). The chats of Claude Code and Codex both do.
-const CHAT_STARTED_SCRIPT = `(() => {
+// Run in a chat's page: whether it has started, which it has once React has put its own elements
+// in #root, in place of what the page comes with (Codex's startup loader). The chats of Claude
+// Code and Codex both do.
+function chatStarted(document) {
   const root = document.getElementById('root');
   return !!root && [...root.children].some((child) => Object.keys(child).some((key) => key.startsWith('__reactFiber$')));
-})()`;
+}
+
+const CHAT_STARTED_SCRIPT = `(${chatStarted})(document)`;
+
+// Waits in the chat's page, for up to `wait` milliseconds, until it has started. Resolves whether
+// it has.
+function chatStartedScript(wait) {
+  return `(${waitInPage})(() => (${chatStarted})(document), (started) => started, ${wait}, window)`;
+}
 
 const STUCK = Symbol('stuck');
 
@@ -26,19 +36,21 @@ function within(promise, ms, fallback) {
 
 // How an agent's chat, in the frames `framesNow()` gives, starts: 'started', once one of them
 // has; 'gone', when they or their tab go away first; 'late', when none has started within
-// `timeout`; 'stuck', when one does not answer for `answerTimeout`. The frames are looked up for
-// each check: Electron gives a frame another object as VS Code writes the chat's page into it,
-// and VS Code replaces the frame when the extension sets the page again (Codex does after 30
-// seconds without its chat), so the minute runs on across them.
-async function chatStartup(framesNow, { current, timeout = 60000, answerTimeout = 10000, interval = 1000,
-  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now = Date.now }) {
+// `timeout`; 'stuck', when one does not answer for `answerTimeout` past the `pageWait` its check
+// waits in the page. The frames are looked up for each check: Electron gives a frame another
+// object as VS Code writes the chat's page into it, and VS Code replaces the frame when the
+// extension sets the page again (Codex does after 30 seconds without its chat), so the minute
+// runs on across them.
+async function chatStartup(framesNow, { current, timeout = 60000, answerTimeout = 10000, pageWait = 5000,
+  interval = 1000, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now = Date.now }) {
   const deadline = now() + timeout;
   for (;;) {
     const frames = current() ? framesNow() : [];
     if (!frames.length) return 'gone';
+    const wait = Math.max(0, Math.min(pageWait, deadline - now()));
     // A frame disposed meanwhile is looked up again on the next check.
     const answers = await Promise.all(frames.map((frame) =>
-      within(frame.executeJavaScript(CHAT_STARTED_SCRIPT).catch(() => false), answerTimeout, STUCK)));
+      within(frame.executeJavaScript(chatStartedScript(wait)).catch(() => false), wait + answerTimeout, STUCK)));
     if (answers.includes(true)) return 'started';
     if (!current() || !framesNow().length) return 'gone';
     if (answers.includes(STUCK)) return 'stuck';
@@ -100,4 +112,4 @@ function createChatStartupWatch({ current, chatFrames, versions, ask, rollback, 
   return { watch };
 }
 
-module.exports = { CHAT_STARTED_SCRIPT, chatStartup, createChatStartupWatch };
+module.exports = { CHAT_STARTED_SCRIPT, chatStartedScript, chatStartup, createChatStartupWatch };

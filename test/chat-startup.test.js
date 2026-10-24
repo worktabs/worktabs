@@ -1,12 +1,12 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const vm = require('node:vm');
-const { CHAT_STARTED_SCRIPT, chatStartup, createChatStartupWatch } = require('../src/conversations/chat-startup');
+const { CHAT_STARTED_SCRIPT, chatStartedScript, chatStartup, createChatStartupWatch } = require('../src/conversations/chat-startup');
 
-// A clock that moves on only while chatStartup sleeps.
+// A clock that moves on only while chatStartup sleeps, whose checks do not wait in the page.
 function clock() {
   let time = 0;
-  return { now: () => time, sleep: async (ms) => { time += ms; } };
+  return { now: () => time, sleep: async (ms) => { time += ms; }, pageWait: 0 };
 }
 
 // A chat frame whose page has started after `startsAfter` answers (never with null). `answer`:
@@ -14,7 +14,7 @@ function clock() {
 function chatFrame({ startsAfter = null, answer = null } = {}) {
   const frame = { attempts: 0 };
   frame.executeJavaScript = async (script) => {
-    assert.equal(script, CHAT_STARTED_SCRIPT);
+    assert.equal(script, chatStartedScript(0));
     frame.attempts++;
     if (answer) return answer(frame.attempts);
     return startsAfter !== null && frame.attempts > startsAfter;
@@ -27,6 +27,19 @@ test('a page has started once React has put its own element in #root', () => {
   assert.equal(run(null), false);
   assert.equal(run({ children: [{ className: 'startup-loader' }] }), false);
   assert.equal(run({ children: [{ className: 'startup-loader' }, { __reactFiber$abc: {} }] }), true);
+});
+
+test('the check waits in the page until React has put its element in #root', async () => {
+  const root = { children: [{ className: 'startup-loader' }] };
+  let observer = null;
+  const page = {
+    document: { getElementById: () => root }, setTimeout, clearTimeout, setInterval, clearInterval,
+    MutationObserver: class { constructor(callback) { observer = callback; } observe() {} disconnect() {} },
+  };
+  const started = vm.runInNewContext(chatStartedScript(5000), { ...page, window: page });
+  root.children = [{ __reactFiber$abc: {} }];
+  observer([]);
+  assert.equal(await started, true);
 });
 
 test('a chat starts, starts late, gets stuck, or goes away', async () => {
