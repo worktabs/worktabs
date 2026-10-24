@@ -2,6 +2,14 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-24
+
+### Features
+- show the version of Worktabs at the end of the "…" menu ([#17](https://github.com/worktabs/worktabs/pull/17))
+
+### Bug fixes
+- install for the current user only, so that Worktabs can update itself ([#16](https://github.com/worktabs/worktabs/pull/16))
+
 ## [0.6.0] - 2026-10-24
 
 ### Features
