@@ -3,15 +3,16 @@
 // fakes test it.
 const { t } = require('../i18n');
 const { unproxiedUrl } = require('../code-server/code-server');
-const { CHAT_FOCUS_GUARD, isClaudeChatFrame, isCodexChatFrame, pageFocusScript } = require('../conversations/chat-frames');
+const { CHAT_FOCUS_GUARD, chatAgent, isClaudeChatFrame, isCodexChatFrame, pageFocusScript } = require('../conversations/chat-frames');
 const { codexApprovalScript } = require('../codex/codex-approval');
 const { codexOnboardingScript } = require('../agents/agent-onboarding');
 
 // `makeView()`: a new WebContentsView. `frameOf(processId, routingId)`: webFrameMain.fromId.
 // `folderFromUrl(url)`: the folder a code-server address opens, or null. `hostKeys(event, input,
 // contents)`: the keys the app keeps (host-keys.js). `current(tab)`: whether the tab is still
-// open (TabLifecycle). `approvalMode()`: the Codex approval mode in the settings.
-function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExternal, hostKeys, current, approvalMode, changed }) {
+// open (TabLifecycle). `approvalMode()`: the Codex approval mode in the settings. `chatLoaded(tab,
+// agent)`: an agent chat's frame has loaded (chat-startup.js watches it start).
+function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExternal, hostKeys, current, approvalMode, changed, chatLoaded }) {
   return function createTabView(tab) {
     const view = makeView();
     const contents = view.webContents;
@@ -52,6 +53,8 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
         if (tab.linkedWorktree) frame.executeJavaScript(codexOnboardingScript()).catch(() => {});
         frame.executeJavaScript(codexApprovalScript(approvalMode())).catch(() => {});
       }
+      const agent = frame && chatAgent(frame);
+      if (agent) chatLoaded(tab, agent);
     });
     contents.on('render-process-gone', (_event, details) => {
       if (!current(tab)) return;

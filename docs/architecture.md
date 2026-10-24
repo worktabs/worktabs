@@ -407,6 +407,18 @@ Codex 26.1021.22027 (release and pre-release) preloads 3,203 modules (73 MB) bef
 - Codex 26.51007.21434 preloads nothing this way, so nothing changes for it.
 - Codex is made for VS Code's desktop app, where this does not show. Making it work in code-server is Worktabs's part, as with the webviews' sites.
 
+## Agent chats that do not start
+
+An update of an agent's extension can bring a chat that never starts in code-server, or that stops its page while it starts, as Codex 26.1021.22027 did ([above](#codexs-module-preloads)). `src/conversations/chat-startup.js` watches the Claude Code and Codex chats of each tab from when one of them first loads (`chatLoaded` in `tab-view.js`).
+
+- A chat has started once React has put its own element in its page's `#root`. Both chats do this within seconds; Codex in 10 to 15 on a busy machine.
+- An agent whose chat has not started in a tab a minute after it first loaded there, or whose chat's page does not answer for 10 seconds meanwhile, is told in a dialog. It names the tab and the extension's version.
+- The frames are looked up for each check, and the minute runs on across them. Electron disposes a frame's first object as VS Code writes the chat's page into it, and VS Code replaces the frame when the extension sets the page again: Codex does after 30 seconds without its chat.
+- The dialog offers the previous version when Settings could go back to one (an extension imported for this machine; `rollbackExtension`), and reloading the tab. Nothing changes without the person's choice.
+- It is told once for each version of an extension in a run of the app, so several tabs that open at once on the same version bring one dialog. `logs/updates.log` gets a line for each chat that does not start.
+- A WSL tab runs the extensions of another target, so the dialog there names no version and offers no previous one.
+- A chat that is not shown has no frame, so it is not watched. A chat that starts and later stops answering is not watched either.
+
 ## Codex approval preference
 
 - `codexApprovalMode` in the Worktabs config is independent of Claude's `permissionMode`. Settings save `auto-review` or `manual`; the default is automatic review when available.

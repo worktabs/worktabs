@@ -94,6 +94,6 @@ Logs are in `logs\`.
 
 - `hooks.log`: Claude Code hooks and the usage received
 - `code-server-<tab ID>.log`: code-server for each tab. Logs of code-server for WSL tabs are written under the same name
-- `updates.log`: Updates of code-server and the extensions
+- `updates.log`: Updates of code-server and the extensions, and the agent chats that did not start
 - `repos.log`: Sources whose repository list could not be read, and why (WSL not installed, and so on). Also hosts where gh could not read the visibility or the account's repositories, and the ghq or git output when a clone fails
 - `settings.log`: Why VS Code settings could not be shared between tabs
