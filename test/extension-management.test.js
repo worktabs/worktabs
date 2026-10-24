@@ -123,7 +123,20 @@ test('a failed local probe restores the previous snapshot and never starts a gal
   await scheduled.shift()();
   assert.deepEqual(calls.filter(([kind]) => kind === 'install'), [['install', 'snapshot/2.0.0.vsix'], ['install', 'snapshot/old.vsix']]);
   assert.equal(coordinator.state.status, 'failed');
+  assert.equal(coordinator.state.detail, 'probe failed. The previous versions stay.');
   assert.equal(calls.some(([kind]) => ['commit', 'refresh', 'follow-up'].includes(kind)), false);
+});
+
+test('a failed restoration after a failed probe does not claim that the previous versions stay', async () => {
+  const { service, records, scheduled, coordinator, servers } = setup({
+    probeInstance: async () => { throw new Error('probe failed'); },
+  });
+  servers.installExtension = async (file) => { if (file === 'snapshot/old.vsix') throw new Error('cannot reinstall'); };
+  records.push({ ...candidate('1.0.0'), file: 'snapshot/old.vsix', source: { kind: 'vscode' } });
+  await service.queueExtensionImports([service.rememberCandidate(candidate()).key]);
+  await scheduled.shift()();
+  assert.equal(coordinator.state.status, 'failed');
+  assert.match(coordinator.state.detail, /^probe failed\. Restoration failed: cannot reinstall$/);
 });
 
 test('Linux imports commit prepared snapshots without installing or probing the local server', async () => {

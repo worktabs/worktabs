@@ -146,16 +146,17 @@ class CodeServerManager extends InstanceManager {
   // `preferredPort` should be the port this tab used before: VS Code web keeps its workbench
   // state (open editors, including Claude conversation tabs) in browser storage per origin,
   // so a new port starts from an empty workbench. `avoid`: the ports other tabs keep, which a
-  // new port must not be (tab-ports.js). `shareSettings`: see writeSettings. `owner` is returned
-  // with exit events so the tab lifecycle can ignore events from an earlier start of this ID.
-  async start(tabId, folder, preferredPort = 0, { shareSettings = null, avoid = new Set(), owner = null } = {}) {
+  // new port must not be (tab-ports.js). `shareSettings`: see writeSettings. `settings`: managed
+  // settings of this start only, over managedSettings. `owner` is returned with exit events so
+  // the tab lifecycle can ignore events from an earlier start of this ID.
+  async start(tabId, folder, preferredPort = 0, { shareSettings = null, avoid = new Set(), owner = null, settings = {} } = {}) {
     this.stop(tabId);
     const port = await this.runtime.pickPort(preferredPort, avoid);
     const userDataDir = this.userDataDir(tabId);
     const shared = await this.runtime.prepare({
       files: localFiles, extensionsDir: this.extensionsDir, userDataDir,
       userDir: (id) => path.join(this.userDataDir(id), 'User'),
-      managed: this.managedSettings, shareSettings,
+      managed: { ...this.managedSettings, ...settings }, shareSettings,
       wrapperOptions: { node: this.nodeExe, nativeLauncher: this.codexLauncher },
     });
     let instance;

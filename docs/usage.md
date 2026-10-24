@@ -372,7 +372,7 @@ Use **Settings > Extensions** (the gear at the top of the sidebar, or **Extensio
 The app does not update code-server or the extensions (Claude Code and the language pack) on its own. When a new version exists, "Update available" appears at the top of the sidebar.
 
 - Press "Update", and the app first downloads code-server. Then it waits until no tab is working or waiting for approval and there are no unsaved edits, and updates. While it waits, "Cancel the update" cancels it. While it downloads and installs, a moving bar in the card shows that it is still working. The installer reports no percentage.
-- Before restarting tabs, the app starts one instance of the new version in the background and checks it: no login screen, the folder opens, the display is in the display language, and Claude Code starts. If these checks fail, it goes back to the previous version.
+- Before restarting tabs, the app starts one instance of the new version in the background and checks it: no login screen, the folder opens, the display is in the display language, and Claude Code starts. When code-server itself changes and Codex is installed, it also opens the Codex chat and checks that it starts within 60 seconds without VS Code stopping responding. If these checks fail, it goes back to the previous version.
 - Finally, running tabs restart with the new version. Suspended tabs start with the new version the next time you open them.
 - Only the one previous version of code-server is kept. To go back by hand, set `codeServerVersion` in the settings file to the previous version and restart.
 

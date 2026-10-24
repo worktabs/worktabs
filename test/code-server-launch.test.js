@@ -102,6 +102,16 @@ test('a local spawn error cleans up settings and rejects startup with its diagno
   assert.equal(f.stopped(), 1); assert.equal(f.manager.instances.size, 0);
 });
 
+test('a local start writes its own managed settings over the manager\'s, for that start only', async (t) => {
+  const f = fixture(t, 'local'); const written = [];
+  f.manager.managedSettings = { 'chatgpt.openOnStartup': false, 'extensions.autoUpdate': false };
+  const prepare = f.manager.runtime.prepare;
+  f.manager.runtime.prepare = (options) => { written.push(options.managed); return prepare(options); };
+  await f.manager.start('probe', path.join('repo'), 4600, { settings: { 'chatgpt.openOnStartup': true } });
+  await f.manager.start('tab', path.join('repo'), 4600);
+  assert.deepEqual(written, [{ 'chatgpt.openOnStartup': true, 'extensions.autoUpdate': false }, { 'chatgpt.openOnStartup': false, 'extensions.autoUpdate': false }]);
+});
+
 test('preparation shares managed settings, paths and Codex launchers across filesystem adapters', async (t) => {
   for (const backend of ['local', 'wsl']) {
     const root = backend === 'local' ? tempDir(t) : '/home/me/.worktabs'; const writes = new Map(); let wrapperOptions;

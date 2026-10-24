@@ -84,7 +84,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     const servers = getServers();
     const succeeded = await updateCoordinator.execute(run, {
       applying: t('Installing the imported extensions'),
-      failure: (error) => error.message,
+      // applyImportBatch has put the previous versions back, unless that failed too (the cause).
+      failure: (error) => error.cause ? error.message : t('{error}. The previous versions stay.', { error: error.message }),
       apply: async () => {
         if (target === localTarget()) {
           await applyImportBatch({ records, previous,

@@ -142,7 +142,8 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
         items, extensions, next, previous, report, log,
         install: (spec) => local.installExtension(spec),
         use: useCodeServer,
-        probe,
+        // A new code-server can stop the Codex chat from starting; the gallery extensions cannot.
+        probe: () => probe([], { codex: Boolean(next) }),
         commit: () => {
           saveConfig(config, ['codeServerVersion']);
           removeOld(dataDir, [next.dir, previous.dir]);
