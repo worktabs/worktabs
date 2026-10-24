@@ -9,7 +9,7 @@
 // open the webviews' Cache Storage and the Claude panels stay blank.
 const fs = require('fs');
 const path = require('path');
-const { call, log, run, sleep, until } = require('./dev-lib');
+const { call, log, newSidebarSession, run, sendInSidebarChat, sidebarChatShows, sleep, until } = require('./dev-lib');
 
 const [FOLDER] = process.argv.slice(2);
 const PROMPTS = {
@@ -18,37 +18,8 @@ const PROMPTS = {
   C: 'CHECK-C: Reply with just the word CHARLIE.',
 };
 
-// Runs `js` in the chat in the side bar (undefined until it is there).
-async function inSidebarChat(id, js) {
-  const results = await call('eval', {
-    id,
-    target: 'webviews',
-    js: `window.IS_SIDEBAR && document.querySelector('[aria-label="Message input"]') ? (${js}) : undefined`,
-  });
-  return results.find((r) => r !== undefined && r !== null);
-}
-
-async function send(id, text) {
-  await until('the chat in the side bar', () => inSidebarChat(id, `(() => {
-    const input = document.querySelector('[aria-label="Message input"]');
-    // The chat first, as a click would: the app keeps a chat without the focus from taking it.
-    window.focus();
-    input.focus();
-    document.execCommand('selectAll');
-    document.execCommand('insertText', false, ${JSON.stringify(text)});
-    return true;
-  })()`), 60000, 1000);
-  await until('send button', () => inSidebarChat(id, `(() => {
-    const input = document.querySelector('[aria-label="Message input"]');
-    const send = document.querySelector('button[aria-label="Send message"]');
-    if (!input.innerText.includes(${JSON.stringify(text.slice(0, 7))}) || !send || send.disabled) return false;
-    send.click();
-    return true;
-  })()`), 10000, 300);
-}
-
-// The markers of the prompts the chat in the side bar shows now.
-const shown = (id) => inSidebarChat(id, `['CHECK-A', 'CHECK-B', 'CHECK-C'].filter((m) => document.body.innerText.includes(m + ':')).join(',') || 'none'`);
+const send = sendInSidebarChat;
+const shown = sidebarChatShows;
 
 const tabOf = async (id) => (await call('state')).tabs.find((t) => t.id === id);
 const sessionsOf = async (id) => (await call('state')).sessions.filter((s) => s.tabId === id);
@@ -91,13 +62,7 @@ run(async () => {
   await send(id, PROMPTS.A);
   const a = await finished(id, [], 'A to finish');
   log('A finished', a);
-  await until('New session', () => inSidebarChat(id, `(() => {
-    const button = document.querySelector('button[aria-label="New session"]');
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`), 10000, 500);
-  await until('the new conversation', async () => (await shown(id)) === 'none', 10000, 300);
+  await newSidebarSession(id);
   await send(id, PROMPTS.B);
   const b = await finished(id, [a], 'B to finish');
   log('B finished', b, 'the chat shows', await shown(id));
