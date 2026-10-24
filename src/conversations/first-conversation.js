@@ -34,9 +34,14 @@ function codexTaskScript(prompt) {
   return webviewReactScript(`return (${prefillCodexTask})(document, ${JSON.stringify(prompt)}, (node) => { const found = reactAncestors(node); return found.available ? found.props : []; });`);
 }
 
+// How long the Codex chat has to show its composer for the task. The helper opens the new
+// conversation as soon as the tab's extension host is up, before the chat has started: it starts
+// in about 8 seconds, and in 10 or more on a busy machine (three worktrees added at once).
+const COMPOSER_WAIT = 60000;
+
 // Keep opening, bounded input retries, cancellation, and recovery testable without Electron.
 async function startTaskConversation({ agent, prompt, open, fill, current, recover, pause,
-  attempts = 20 }) {
+  wait = COMPOSER_WAIT, now = Date.now }) {
   if (!current()) return;
   let answer;
   try { answer = await open(); } catch { answer = null; }
@@ -47,7 +52,7 @@ async function startTaskConversation({ agent, prompt, open, fill, current, recov
   }
   if (answer?.opened && !prompt) return;
   if (answer?.opened) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
+    for (const end = now() + wait; now() < end;) {
       if (!current()) return;
       let result;
       try { result = await fill(); } catch { result = null; }
