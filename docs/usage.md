@@ -172,7 +172,7 @@ Type in the field at the top to filter by repository name, worktree name, branch
   - Circular arrow (reload the repository list): reloads the repositories from ghq (including inside WSL) and from the settings, the worktrees of expanded repositories, and the remotes (for every repository, for the row icons and visibility icons; it also asks again about SSH aliases and the gh sign-in). The icon spins until loading is done. Then it also asks GitHub again for repositories not cloned (the icon does not spin for this).
   - "＋": "Add repository…" (adds the git repository of the picked folder to the settings) and "Open folder…" (also opens folders not under git).
   - Gear: opens the settings dialog.
-  - "…": "Check for code-server and extension updates" (if a new version exists, the sidebar shows it) and "Open settings file" (opens the settings file in the default editor).
+  - "…": "Check for code-server and extension updates" (if a new version exists, the sidebar shows it) and "Open settings file" (opens the settings file in the default editor). Its last line shows the version of Worktabs.
 
 ### Width
 
