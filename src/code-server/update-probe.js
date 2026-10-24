@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { t, listText } = require('../i18n');
 const { codexChatFrames } = require('../conversations/chat-frames');
+const { CHAT_STARTED_SCRIPT } = require('../conversations/chat-startup');
 const { folderUrl } = require('./code-server');
 const { sleep: wait } = require('../util');
 
@@ -12,13 +13,6 @@ const { sleep: wait } = require('../util');
 const UPDATE_PROBE_ID = 'update-check';
 
 const CODEX_EXTENSION = 'openai.chatgpt';
-
-// The Codex chat has started once React has put its own elements in #root, in place of the
-// startup loader the page comes with. A page that could not start shows no #root at all.
-const CODEX_STARTED_SCRIPT = `(() => {
-  const root = document.getElementById('root');
-  return !!root && [...root.children].some((child) => Object.keys(child).some((key) => key.startsWith('__reactFiber$')));
-})()`;
 
 const WORKBENCH_SCRIPT = `({
   login: /\\/login\\/?$/.test(location.pathname),
@@ -91,7 +85,8 @@ async function waitForCodexChat(contents, { timeout = 60000, answerTimeout = 100
       throw new Error(t('VS Code stopped responding while the Codex chat started'));
     }
     for (const frame of codexChatFrames(contents)) {
-      if (await within(frame.executeJavaScript(CODEX_STARTED_SCRIPT), answerTimeout, false)) return;
+      // The check the tabs make (chat-startup.js): React's own elements in #root.
+      if (await within(frame.executeJavaScript(CHAT_STARTED_SCRIPT), answerTimeout, false)) return;
     }
     if (now() > deadline) throw new Error(t('The Codex chat did not start within 60 seconds'));
     await sleep(1000);
