@@ -129,6 +129,8 @@
   "VS Code did not appear within 60 seconds": "VS Code の画面が 60 秒以内に表示されませんでした",
   "The extension {id} failed to start": "拡張 {id} の起動に失敗しました",
   "The extensions {ids} did not start within 60 seconds": "拡張 {ids} が 60 秒以内に起動しませんでした",
+  "VS Code stopped responding while the Codex chat started": "Codex のチャットの起動中に VS Code が応答しなくなりました",
+  "The Codex chat did not start within 60 seconds": "Codex のチャットが 60 秒以内に起動しませんでした",
   "The dialog that asks where to clone is closed": "クローン先を選ぶダイアログが閉じています",
   "The dialog that adds a worktree is closed": "worktree を追加するダイアログが閉じています",
   "Enter an issue, a PR, or what to do": "issue・PR かやることを書いてください",

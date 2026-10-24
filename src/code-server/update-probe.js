@@ -4,11 +4,15 @@
 const fs = require('fs');
 const path = require('path');
 const { t, listText } = require('../i18n');
+const { codexChatFrames } = require('../conversations/chat-frames');
+const { CHAT_STARTED_SCRIPT } = require('../conversations/chat-startup');
 const { folderUrl } = require('./code-server');
 const { sleep: wait } = require('../util');
 
 // The code-server instance that tries out new versions.
 const UPDATE_PROBE_ID = 'update-check';
+
+const CODEX_EXTENSION = 'openai.chatgpt';
 
 const WORKBENCH_SCRIPT = `({
   login: /\\/login\\/?$/.test(location.pathname),
@@ -56,28 +60,70 @@ async function waitForActivation(manager, instanceId, since, expected, { timeout
   }
 }
 
+// What `promise` resolves, or `fallback` once `ms` have passed: a page whose main thread is stuck
+// never answers.
+function within(promise, ms, fallback) {
+  let timer;
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise((resolve) => { timer = setTimeout(resolve, ms, fallback); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Waits until the Codex chat in the side bar has started. code-server keeps a webview in the
+// workbench's page, so a chat that never finishes starting can stop the whole VS Code from
+// answering (Codex 26.1021.22027 preloads 3,203 modules before it starts). `answerTimeout`: how
+// long the page may take to answer before it counts as stuck.
+/**
+ * @param {import('electron').WebContents} contents
+ * @param {{ timeout?: number, answerTimeout?: number, sleep?: (ms: number) => Promise<any>, now?: () => number }} [options]
+ */
+async function waitForCodexChat(contents, { timeout = 60000, answerTimeout = 10000, sleep = wait, now = Date.now } = {}) {
+  const deadline = now() + timeout;
+  for (;;) {
+    if (!(await within(contents.executeJavaScript('true'), answerTimeout, false))) {
+      throw new Error(t('VS Code stopped responding while the Codex chat started'));
+    }
+    for (const frame of codexChatFrames(contents)) {
+      // The check the tabs make (chat-startup.js): React's own elements in #root.
+      if (await within(frame.executeJavaScript(CHAT_STARTED_SCRIPT), answerTimeout, false)) return;
+    }
+    if (now() > deadline) throw new Error(t('The Codex chat did not start within 60 seconds'));
+    await sleep(1000);
+  }
+}
+
 // `hiddenView`: makes a hidden view in the window, with `close()` to take it away. `reserved`:
 // the ports the tabs keep (TabPorts.reserved). `connect`: sets the instance's session cookie.
 // `startupExtensions`: those of the extensions that activate at startup (updates.js). `timing`:
-// { sleep, now } for the waits.
+// { sleep, now, answerTimeout } for the waits.
 function createUpdateProbe({ dataDir, config, servers, hiddenView, reserved, connect, clearPortStorage, startupExtensions, timing = {} }) {
   // Throws with what went wrong. `extraIds`: extensions to expect besides those configured.
-  return async function probeInstance(extraIds = []) {
+  // `codex`: also start the Codex chat, if Codex is installed. By default only when the
+  // extensions tried out include Codex, so that a Codex that does not start leaves unrelated
+  // updates alone.
+  return async function probeInstance(extraIds = [], { codex: tryCodex = extraIds.some((id) => id.toLowerCase() === CODEX_EXTENSION) } = {}) {
     const folder = path.join(dataDir, UPDATE_PROBE_ID);
     fs.mkdirSync(folder, { recursive: true });
     const manager = servers();
+    // The new versions are installed by now.
+    const expected = startupExtensions(config.resolvedExtensionsDir, [...new Set([...config.resolvedExtensions, ...extraIds])]);
+    const codex = tryCodex && expected.includes(CODEX_EXTENSION);
     const view = hiddenView();
     const since = Date.now();
     let port = 0;
     try {
-      // Not on a tab's port, whose VS Code state it would write to.
+      // Not on a tab's port, whose VS Code state it would write to. Codex opens its chat itself
+      // here, as the tabs leave that to Worktabs.
       let cookie;
-      ({ port, cookie } = await manager.start(UPDATE_PROBE_ID, folder, 0, { avoid: reserved(UPDATE_PROBE_ID) }));
+      ({ port, cookie } = await manager.start(UPDATE_PROBE_ID, folder, 0, {
+        avoid: reserved(UPDATE_PROBE_ID), settings: codex ? { 'chatgpt.openOnStartup': true } : {},
+      }));
       await connect(port, cookie);
       view.webContents.loadURL(folderUrl(port, folder)).catch(() => {});
       await waitForWorkbench(view.webContents, path.basename(folder), { locale: config.resolvedLocale, ...timing });
-      const expected = startupExtensions(config.resolvedExtensionsDir, [...new Set([...config.resolvedExtensions, ...extraIds])]);
       await waitForActivation(manager, UPDATE_PROBE_ID, since, expected, timing);
+      if (codex) await waitForCodexChat(view.webContents, timing);
     } finally {
       view.close();
       // While its code-server still holds the port, so that no tab takes it meanwhile.
@@ -87,4 +133,4 @@ function createUpdateProbe({ dataDir, config, servers, hiddenView, reserved, con
   };
 }
 
-module.exports = { UPDATE_PROBE_ID, createUpdateProbe, waitForActivation, waitForWorkbench };
+module.exports = { UPDATE_PROBE_ID, createUpdateProbe, waitForActivation, waitForCodexChat, waitForWorkbench };
