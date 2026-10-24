@@ -131,6 +131,10 @@ const {
 } = require('./repos/worktrees');
 
 const PARTITION = 'persist:worktabs';
+// The views that show code-server's workbench (the tabs and the update probe). Their frames,
+// webviews included, run the preload registered on their session (codex-frame-preload.js).
+const WORKBENCH_VIEW = Object.freeze({ partition: PARTITION, backgroundThrottling: false, nodeIntegrationInSubFrames: true });
+const CODEX_FRAME_PRELOAD = path.join(__dirname, 'codex', 'codex-frame-preload.js');
 // Outside the asar archive in the packaged app, since Windows cannot run an exe from inside it
 // and code-server cannot read a VSIX there.
 const NATIVE_DIR = app.isPackaged ? path.join(process.resourcesPath, 'native') : path.join(__dirname, '..', 'native');
@@ -344,7 +348,7 @@ function messageBox(options) {
 // ---- Tabs ----------------------------------------------------------------------------------
 
 const createTabView = createTabViews({
-  makeView: () => new WebContentsView({ webPreferences: viewPreferences({ partition: PARTITION, backgroundThrottling: false }) }),
+  makeView: () => new WebContentsView({ webPreferences: viewPreferences(WORKBENCH_VIEW) }),
   frameOf: (processId, routingId) => webFrameMain.fromId(processId, routingId),
   folderFromUrl: (url) => codeServers.all().map((manager) => manager.folderFromUrl(url)).find(Boolean),
   openTab, openExternal: (url) => shell.openExternal(url), hostKeys: handleHostKeys,
@@ -543,7 +547,7 @@ const probeInstance = createUpdateProbe({
   dataDir, config, servers: codeServers.local, reserved: (id) => tabPorts.reserved(id), clearPortStorage, startupExtensions,
   connect: (port, cookie) => session.fromPartition(PARTITION).cookies.set({ url: `http://127.0.0.1:${port}/`, path: '/', sameSite: 'lax', ...cookie }),
   hiddenView: () => {
-    const view = new WebContentsView({ webPreferences: viewPreferences({ partition: PARTITION, backgroundThrottling: false }) });
+    const view = new WebContentsView({ webPreferences: viewPreferences(WORKBENCH_VIEW) });
     view.setVisible(false);
     addView(view);
     view.setBounds(emptyView.getBounds());
@@ -962,6 +966,7 @@ app.whenReady().then(async () => {
   // VS Code's display language, and the extensions with the language pack it needs.
   config.resolvedLocale = displayLocale(config.locale, language());
   refreshResolvedExtensions();
+  session.fromPartition(PARTITION).registerPreloadScript({ type: 'frame', id: 'worktabs-codex-frame', filePath: CODEX_FRAME_PRELOAD });
   if (process.platform === 'darwin') Menu.setApplicationMenu(Menu.buildFromTemplate(macMenuTemplate()));
   // Electron starts taking clicks on notifications from Windows (as a COM server) with its first
   // notification. A click on one left from before the app started starts the app, and reaches
