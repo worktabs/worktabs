@@ -74,10 +74,10 @@ async function badges() {
   });
 }
 
-// Opens a new Claude conversation: the activity bar item shows the Session Manager, whose
-// "New session" button opens a chat tab. Webviews are only created while the tab is visible.
-// The activity bar item toggles the view, so it is clicked only when the Session Manager is
-// not already showing.
+// Opens a Claude chat: one that has its input is there already; else a "New session" button
+// (the Session Manager of older Claude Code) opens one, or the activity bar item shows the view.
+// Webviews are only created while the tab is visible. The activity bar item toggles the view, so
+// it is clicked only when no "New session" button shows.
 async function openClaudePanel(id) {
   let lastToggle = 0;
   await until(`Claude panel in ${id}`, async () => {
@@ -125,13 +125,73 @@ async function sendPrompt(id, text) {
   })()`), 10000, 300);
 }
 
+// Presses the first option ("1 Yes") of the permission prompt in the tab's Claude chat, and
+// resolves its label. Claude Code ignores a click on a prompt it has just shown, so the option is
+// pressed a second after it shows, and again each second until the prompt goes.
 async function approveFirstOption(id) {
-  return until('permission options', () => inPanel(id, `(() => {
-    const option = [...document.querySelectorAll('button')].find((b) => /^1\\s*Yes/.test(b.innerText.trim()));
-    if (!option) return false;
-    option.click();
-    return option.innerText.trim().replace(/\\s+/g, ' ');
-  })()`), 30000, 500);
+  const option = `[...document.querySelectorAll('button')].find((b) => /^1\\s*Yes/.test(b.innerText.trim()))`;
+  const label = await until('permission options', () => inPanel(id, `(() => {
+    const option = ${option};
+    return option ? option.innerText.trim().replace(/\\s+/g, ' ') : false;
+  })()`), 30000, 300);
+  await until('the permission prompt to go', async () => {
+    await sleep(1000);
+    return inPanel(id, `(() => {
+      const option = ${option};
+      if (!option) return true;
+      option.click();
+      return false;
+    })()`);
+  }, 30000, 0);
+  return label;
+}
+
+// Runs `js` in the Claude chat in the tab's side bar (undefined until it is there).
+async function inSidebarChat(id, js) {
+  const results = await call('eval', {
+    id,
+    target: 'webviews',
+    js: `window.IS_SIDEBAR && document.querySelector('[aria-label="Message input"]') ? (${js}) : undefined`,
+  });
+  return results.find((r) => r !== undefined && r !== null);
+}
+
+// Types `text` into the Claude chat in the tab's side bar, and sends it.
+async function sendInSidebarChat(id, text) {
+  await until('the chat in the side bar', () => inSidebarChat(id, `(() => {
+    const input = document.querySelector('[aria-label="Message input"]');
+    // The chat first, as a click would: the app keeps a chat without the focus from taking it.
+    window.focus();
+    input.focus();
+    document.execCommand('selectAll');
+    document.execCommand('insertText', false, ${JSON.stringify(text)});
+    return true;
+  })()`), 60000, 1000);
+  await until('send button', () => inSidebarChat(id, `(() => {
+    const input = document.querySelector('[aria-label="Message input"]');
+    const send = document.querySelector('button[aria-label="Send message"]');
+    if (!input.innerText.includes(${JSON.stringify(text.slice(0, 7))}) || !send || send.disabled) return false;
+    send.click();
+    return true;
+  })()`), 10000, 300);
+}
+
+// Starts another conversation in the Claude chat in the tab's side bar, with its "New session"
+// button, and waits until the chat shows none of the check's prompts (sidebarChatShows).
+async function newSidebarSession(id) {
+  await until('New session', () => inSidebarChat(id, `(() => {
+    const button = document.querySelector('button[aria-label="New session"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`), 10000, 500);
+  await until('the new conversation', async () => (await sidebarChatShows(id)) === 'none', 10000, 300);
+}
+
+// The markers ('CHECK-A', ...) of the check's prompts that the Claude chat in the tab's side bar
+// shows now, comma separated, or 'none'.
+function sidebarChatShows(id) {
+  return inSidebarChat(id, `['CHECK-A', 'CHECK-B', 'CHECK-C'].filter((m) => document.body.innerText.includes(m + ':')).join(',') || 'none'`);
 }
 
 function run(main) {
@@ -149,4 +209,7 @@ async function appText() {
   return translator(TRANSLATIONS[await call('language')]);
 }
 
-module.exports = { appText, approveFirstOption, badges, call, inPanel, log, openClaudePanel, run, sendPrompt, sleep, tabNamed, until };
+module.exports = {
+  appText, approveFirstOption, badges, call, inPanel, inSidebarChat, log, newSidebarSession, openClaudePanel, run,
+  sendInSidebarChat, sendPrompt, sidebarChatShows, sleep, tabNamed, until,
+};
