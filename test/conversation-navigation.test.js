@@ -56,8 +56,15 @@ test('navigation waits for the exact thread instead of accepting another thread 
 test('a blank, rejected, or stuck renderer reaches the deadline without marking navigation successful', async () => {
   for (const read of [async () => [null], async () => { throw Error('Gone'); }, () => new Promise(() => {})]) {
     assert.equal(await confirmCodexThread({ threadId: 'thread', current: () => true, read,
-      pause: () => new Promise((resolve) => setTimeout(resolve, 1)), timeout: 5 }), false);
+      pause: () => new Promise((resolve) => setTimeout(resolve, 1)), timeout: 5, readTimeout: 2 }), false);
   }
+});
+
+test('a read never answered is made again', async () => {
+  let reads = 0;
+  assert.equal(await confirmCodexThread({ threadId: 'thread', current: () => true, readTimeout: 5,
+    read: () => (++reads === 1 ? new Promise(() => {}) : Promise.resolve(['thread'])), pause: async () => {} }), true);
+  assert.equal(reads, 2);
 });
 
 test('a fresh official webview can finish loading before navigation falls back', async () => {

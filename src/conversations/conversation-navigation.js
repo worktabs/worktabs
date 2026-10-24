@@ -24,14 +24,21 @@ function codexNavigationScript(threadId, wait = PAGE_WAIT) {
 }
 
 // Fresh official webviews can take several seconds to load after the helper's URI ack. `read()`:
-// the threads the Codex chats in view show, each waiting in its page for `threadId` a while.
-async function confirmCodexThread({ threadId, current, read, pause, timeout = 15000,
+// the threads the Codex chats in view show, each waiting in its page for `threadId` a while. A
+// read is given up after `readTimeout` and made again: one sent as VS Code writes the chat's page
+// into its frame may never be answered, though the page goes on.
+async function confirmCodexThread({ threadId, current, read, pause, timeout = 15000, readTimeout = PAGE_WAIT + 2000,
   setTimer = setTimeout, clearTimer = clearTimeout }) {
   let stopped = false, timer;
+  const readOnce = () => {
+    let readTimer;
+    return Promise.race([read(), new Promise((resolve) => { readTimer = setTimeout(resolve, readTimeout, null); })])
+      .finally(() => clearTimeout(readTimer));
+  };
   const wait = async () => {
     while (!stopped && current()) {
       let shown;
-      try { shown = await read(); } catch { shown = null; }
+      try { shown = await readOnce(); } catch { shown = null; }
       if (stopped || !current()) return false;
       if (Array.isArray(shown) && shown.length === 1 && shown[0] === threadId) return true;
       await pause();
