@@ -81,7 +81,7 @@ const { createTabRisks } = require('./tabs/tab-risks');
 const { SettingsSync } = require('./code-server/settings-sync');
 const { applyShellEnv, readShellEnv } = require('./shell-env');
 const { TabLifecycle } = require('./tabs/tab-lifecycle');
-const { createTabViews } = require('./tabs/tab-view');
+const { closeTabPage, createTabViews } = require('./tabs/tab-view');
 const { createChatStartupWatch } = require('./conversations/chat-startup');
 const { createWebviewSites } = require('./tabs/webview-sites');
 const { StartupGate } = require('./tabs/startup-gate');
@@ -408,7 +408,7 @@ function tabDependencies() {
     },
     unmount: (tab) => {
       win.contentView.removeChildView(tab.view);
-      tab.view.webContents.close();
+      closeTabPage(tab.view.webContents);
     },
     lookupRepo: async (tab) => {
       const [repo, root] = await Promise.all([mainWorktree(tab.folder), repoRoot(tab.folder)]);
