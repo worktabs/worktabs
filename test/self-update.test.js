@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const test = require('node:test');
@@ -10,6 +9,7 @@ const { updateTarget } = require('../src/self-update/target');
 const { findStagedApp, removeLeftovers, stageRelease, stagingPaths } = require('../src/self-update/stage');
 const { readSwapResult, swapCommand, swapScript } = require('../src/self-update/swap');
 const { createSelfUpdate } = require('../src/self-update/self-update');
+const { tempDir } = require('./support');
 
 const WIN = { platform: 'win32', arch: 'x64' };
 const MAC = { platform: 'darwin', arch: 'arm64' };
@@ -20,10 +20,6 @@ function release(version, { draft = false, prerelease = false, assets } = {}) {
     tag_name: `v${version}`, draft, prerelease, html_url: `https://example.test/v${version}`,
     assets: names.map((name) => ({ name, browser_download_url: `https://example.test/${name}`, size: 10 })),
   };
-}
-
-function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'worktabs-self-update-'));
 }
 
 test('the asset is the zip for this machine, and none elsewhere', () => {
@@ -117,8 +113,8 @@ function fakeRelease(dir, { layout, sums } = {}) {
   };
 }
 
-test('staging checks the download, extracts it beside the app, and keeps the uninstaller', async () => {
-  const dir = tempDir();
+test('staging checks the download, extracts it beside the app, and keeps the uninstaller', async (t) => {
+  const dir = tempDir(t);
   const appPath = path.join(dir, 'Worktabs');
   fs.mkdirSync(appPath);
   fs.writeFileSync(path.join(appPath, 'Worktabs.exe'), 'old');
@@ -137,8 +133,8 @@ test('staging checks the download, extracts it beside the app, and keeps the uni
   assert.equal(fs.readFileSync(path.join(appPath, 'Worktabs.exe'), 'utf8'), 'old');
 });
 
-test('staging refuses a download that does not match, and a zip without a release', async () => {
-  const dir = tempDir();
+test('staging refuses a download that does not match, and a zip without a release', async (t) => {
+  const dir = tempDir(t);
   const appPath = path.join(dir, 'Worktabs');
   fs.mkdirSync(appPath);
   const dataDir = path.join(dir, 'data');
@@ -152,8 +148,8 @@ test('staging refuses a download that does not match, and a zip without a releas
   assert.equal(fs.existsSync(`${appPath}.update`), false);
 });
 
-test('the staged app is found at the zip root, in its one folder, or as the .app', () => {
-  const dir = tempDir();
+test('the staged app is found at the zip root, in its one folder, or as the .app', (t) => {
+  const dir = tempDir(t);
   fs.mkdirSync(path.join(dir, 'Worktabs-win'));
   fs.writeFileSync(path.join(dir, 'Worktabs-win', 'Worktabs.exe'), '');
   assert.equal(findStagedApp(dir, 'win32'), path.join(dir, 'Worktabs-win'));
@@ -164,8 +160,8 @@ test('the staged app is found at the zip root, in its one folder, or as the .app
   assert.equal(findStagedApp(dir, 'darwin'), path.join(dir, 'Worktabs.app'));
 });
 
-test('leftovers of an update are removed at the next start', () => {
-  const dir = tempDir();
+test('leftovers of an update are removed at the next start', (t) => {
+  const dir = tempDir(t);
   const appPath = path.join(dir, 'Worktabs');
   const { container, old } = stagingPaths(appPath);
   for (const folder of [appPath, container, old]) fs.mkdirSync(path.join(folder, 'x'), { recursive: true });
@@ -209,8 +205,8 @@ async function windowsSwap(options, done) {
   }
 }
 
-test('the PowerShell swap waits for the app to exit, then puts the new folder in place', { skip: process.platform !== 'win32' }, async () => {
-  const dir = tempDir();
+test('the PowerShell swap waits for the app to exit, then puts the new folder in place', { skip: process.platform !== 'win32' }, async (t) => {
+  const dir = tempDir(t);
   const app = path.join(dir, 'Worktabs');
   const container = `${app}.update`;
   fs.mkdirSync(app);
@@ -241,8 +237,8 @@ async function holdFile(file) {
   return () => new Promise((resolve) => { holder.once('exit', resolve); holder.stdin.end(); });
 }
 
-test('the PowerShell swap leaves the app whole when a file in it is held', { skip: process.platform !== 'win32' }, async () => {
-  const dir = tempDir();
+test('the PowerShell swap leaves the app whole when a file in it is held', { skip: process.platform !== 'win32' }, async (t) => {
+  const dir = tempDir(t);
   const app = path.join(dir, 'Worktabs');
   const container = `${app}.update`;
   fs.mkdirSync(path.join(app, 'sub'), { recursive: true });
@@ -272,8 +268,8 @@ test('the swap result is read, with or without a byte order mark', () => {
 });
 
 // The macOS script itself, with /bin/sh: it waits for the app, swaps, and reports.
-test('the shell swap waits for the app to exit, then puts the new app in place', { skip: process.platform === 'win32' }, async () => {
-  const dir = tempDir();
+test('the shell swap waits for the app to exit, then puts the new app in place', { skip: process.platform === 'win32' }, async (t) => {
+  const dir = tempDir(t);
   const app = path.join(dir, 'Worktabs.app');
   const container = path.join(dir, 'Worktabs.app.update');
   const staged = path.join(container, 'Worktabs.app');
@@ -298,8 +294,8 @@ test('the shell swap waits for the app to exit, then puts the new app in place',
   assert.deepEqual(readSwapResult(fs.readFileSync(result, 'utf8')), { version: '9.9.9', ok: true, error: '' });
 });
 
-test('the shell swap puts the app back when the new one cannot move in', { skip: process.platform === 'win32' }, () => {
-  const dir = tempDir();
+test('the shell swap puts the app back when the new one cannot move in', { skip: process.platform === 'win32' }, (t) => {
+  const dir = tempDir(t);
   const app = path.join(dir, 'Worktabs.app');
   fs.mkdirSync(app);
   fs.writeFileSync(path.join(app, 'version'), 'old');
