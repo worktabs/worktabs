@@ -156,7 +156,8 @@ function createSelfUpdate({ currentVersion, appPath, reason = '', find, stage, s
 function swapError(error) {
   if (error === 'wait') return t('Worktabs did not quit in time. The previous version stays.');
   if (error === 'move') return t('Worktabs could not be replaced. The previous version stays.');
-  return t('{error}. The previous version stays.', { error: error || t('Unknown error') });
+  // The system's message ends a sentence of its own ("... is denied." or "...されました。").
+  return t('{error}. The previous version stays.', { error: (error || t('Unknown error')).replace(/[.。]\s*$/, '') });
 }
 
 module.exports = { createSelfUpdate };

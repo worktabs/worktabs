@@ -440,6 +440,11 @@ test('the last swap is reported once at the next start', async () => {
   failed.update.showLastResult();
   assert.equal(failed.update.state.status, 'failed');
   assert.match(failed.update.state.detail, /did not quit in time/);
+  for (const error of ["Access to the path 'C:\\W' is denied.", "パス 'C:\\W' へのアクセスが拒否されました。"]) {
+    const denied = service({ lastResult: () => ({ version: '0.6.0', ok: false, error }) });
+    denied.update.showLastResult();
+    assert.equal(denied.update.state.detail, `${error.slice(0, -1)}. The previous version stays.`);
+  }
   // The check that follows keeps the failure on the card, with a way to try again.
   await failed.update.check();
   assert.equal(failed.update.state.status, 'failed');
