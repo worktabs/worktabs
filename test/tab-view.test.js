@@ -8,6 +8,7 @@ const { codexOnboardingScript } = require('../src/agents/agent-onboarding');
 
 function setup({ open = true, frame = null, frames = [] } = {}) {
   const calls = [];
+  const loaded = [];
   const contents = new EventEmitter();
   contents.getURL = () => 'http://127.0.0.1:5001/?folder=/src/app';
   contents.focused = false;
@@ -24,8 +25,9 @@ function setup({ open = true, frame = null, frames = [] } = {}) {
     current: () => open,
     approvalMode: () => 'manual',
     changed: () => calls.push(['changed']),
+    chatLoaded: (tab, agent) => loaded.push([tab.id, agent]),
   });
-  return { createTabView, contents, calls };
+  return { createTabView, contents, calls, loaded };
 }
 
 test('new windows of a code-server folder become tabs, web links open in the browser, and nothing opens in Electron', () => {
@@ -111,4 +113,14 @@ test('a page process that ends shows on its open tab only', () => {
   closed.createTabView(gone);
   closed.contents.emit('render-process-gone', {}, { reason: 'crashed' });
   assert.equal(gone.error, undefined);
+});
+
+test('each agent chat frame that loads is watched as it starts; other frames are not', () => {
+  for (const [extensionId, agent] of [['Anthropic.claude-code', 'claude'], ['openai.chatgpt', 'codex'], ['vscode.markdown-language-features', null]]) {
+    const { createTabView, contents, loaded } = setup({ frame: chatFrame(extensionId, []) });
+    createTabView({ id: 't1' });
+    contents.emit('did-frame-finish-load', {}, true, 1, 2);
+    contents.emit('did-frame-finish-load', {}, false, 1, 2);
+    assert.deepEqual(loaded, agent ? [['t1', agent]] : []);
+  }
 });
