@@ -413,7 +413,7 @@ An update of an agent's extension can bring a chat that never starts in code-ser
 
 - A chat has started once React has put its own element in its page's `#root`. Both chats do this within seconds; Codex in 10 to 15 on a busy machine.
 - An agent whose chat has not started in a tab a minute after it first loaded there, or whose chat's page does not answer for 10 seconds meanwhile, is told in a dialog. It names the tab and the extension's version.
-- Each check waits in the chat's page for up to 5 seconds ([below](#waiting-in-the-chats-page)); a page that has not answered 10 seconds after that counts as not answering.
+- Each check waits in the chat's page for up to 5 seconds ([below](#waiting-in-the-chats-page)); a page that has not answered 10 seconds after that, nor then within 10 seconds a script that returns at once, counts as not answering. A check sent as VS Code writes the chat's page into its frame may never be answered, though the page goes on: right after the tabs restarted on another version of Codex, that showed the dialog for a chat that had started.
 - The frames are looked up for each check, and the minute runs on across them. Electron disposes a frame's first object as VS Code writes the chat's page into it, and VS Code replaces the frame when the extension sets the page again: Codex does after 30 seconds without its chat.
 - The dialog offers the previous version when Settings could go back to one (an extension imported for this machine; `rollbackExtension`), and reloading the tab. Nothing changes without the person's choice.
 - It is told once for each version of an extension in a run of the app, so several tabs that open at once on the same version bring one dialog. `logs/updates.log` gets a line for each chat that does not start.

@@ -34,10 +34,18 @@ function within(promise, ms, fallback) {
     .finally(() => clearTimeout(timer));
 }
 
+// Whether one of `frames` does not answer a script that returns at once within `answerTimeout`. A
+// frame that has gone answers, as far as this goes.
+async function notAnswering(frames, answerTimeout) {
+  const answers = await Promise.all(frames.map((frame) => within(frame.executeJavaScript('true').catch(() => true), answerTimeout, STUCK)));
+  return answers.includes(STUCK);
+}
+
 // How an agent's chat, in the frames `framesNow()` gives, starts: 'started', once one of them
 // has; 'gone', when they or their tab go away first; 'late', when none has started within
 // `timeout`; 'stuck', when one does not answer for `answerTimeout` past the `pageWait` its check
-// waits in the page. The frames are looked up for each check: Electron gives a frame another
+// waits in the page, nor then a script that returns at once. A check sent as VS Code writes the
+// chat's page into its frame may never be answered, though the page goes on. The frames are looked up for each check: Electron gives a frame another
 // object as VS Code writes the chat's page into it, and VS Code replaces the frame when the
 // extension sets the page again (Codex does after 30 seconds without its chat), so the minute
 // runs on across them.
@@ -53,7 +61,7 @@ async function chatStartup(framesNow, { current, timeout = 60000, answerTimeout 
       within(frame.executeJavaScript(chatStartedScript(wait)).catch(() => false), wait + answerTimeout, STUCK)));
     if (answers.includes(true)) return 'started';
     if (!current() || !framesNow().length) return 'gone';
-    if (answers.includes(STUCK)) return 'stuck';
+    if (answers.includes(STUCK) && await notAnswering(framesNow(), answerTimeout)) return 'stuck';
     if (now() >= deadline) return 'late';
     await sleep(interval);
   }
