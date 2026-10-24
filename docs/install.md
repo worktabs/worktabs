@@ -39,7 +39,8 @@ Versions released after the repository is made public also carry proof of which 
 
 ## Installer and zip (Windows)
 
-- The installer installs per user and does not need administrator rights.
+- The installer installs for the current user only, by default into `%LOCALAPPDATA%\Programs\Worktabs`, and does not need administrator rights. Worktabs can then update itself ([usage.md](usage.md#updating-worktabs)). If you choose another folder, choose one you can write to without administrator rights.
+  - Installers up to 0.6.0 also offered to install for all users, under Program Files. The installer does not replace such an installation. Uninstall it from "Apps & features" first.
 - The zip needs no installation. Extract it to any folder and run `Worktabs.exe`.
   - You can move the folder later. The path of the Claude wrapper (`resources\native\claude-wrap.exe`) is rewritten on every start.
   - To stop using it, delete the folder. The settings and data ([config.md](config.md)) stay.
