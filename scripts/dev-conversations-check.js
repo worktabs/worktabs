@@ -56,7 +56,7 @@ async function openAnotherPanel(id) {
       id,
       target: 'webviews',
       js: `(() => {
-        const button = [...document.querySelectorAll('button, [role=button]')].find((b) => b.innerText.trim() === 'New session');
+        const button = [...document.querySelectorAll('button, [role=button]')].find((b) => (b.innerText.trim() || b.getAttribute('aria-label')) === 'New session');
         if (!button) return false;
         button.click();
         return true;
