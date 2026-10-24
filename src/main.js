@@ -600,7 +600,7 @@ const selfUpdate = createSelfUpdate({
       script = path.join(SELF_UPDATE_DIR, 'swap.sh');
       fs.writeFileSync(script, swapScript());
     }
-    const { command, args } = swapCommand({
+    const { command, args, env: values, verbatim } = swapCommand({
       pid: process.pid, appPath: selfTarget.appPath, staged, container, old: stagingPaths(selfTarget.appPath).old,
       version, result: SELF_UPDATE_RESULT, relaunch, script,
     });
@@ -609,7 +609,9 @@ const selfUpdate = createSelfUpdate({
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key === 'WORKTABS_DATA_DIR' || !/^(ELECTRON_|WORKTABS_)/i.test(key)));
     // Not in the app's folder (its working folder when started from a shortcut): Windows does not
     // rename a folder that a process runs in.
-    spawn(command, args, { cwd: SELF_UPDATE_DIR, detached: true, stdio: 'ignore', windowsHide: true, env }).unref();
+    spawn(command, args, {
+      cwd: SELF_UPDATE_DIR, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: verbatim, env: { ...env, ...values },
+    }).unref();
   },
   risks: async () => {
     const { busy, unobserved } = await updateRisks();

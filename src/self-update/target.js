@@ -4,7 +4,8 @@
 const path = require('path');
 const { t } = require('../i18n');
 
-const MARKER = path.join('native', 'release.json');
+// As parts, to join with the path module of the platform asked about.
+const MARKER = ['native', 'release.json'];
 
 /**
  * { appPath } when the app can replace itself, { appPath: null, checkable, reason } when it
@@ -15,7 +16,7 @@ const MARKER = path.join('native', 'release.json');
  */
 function updateTarget({ execPath, resourcesPath, isPackaged, platform = process.platform, exists }) {
   const p = platform === 'win32' ? path.win32 : path.posix;
-  if (!isPackaged || !exists(p.join(resourcesPath, MARKER))) {
+  if (!isPackaged || !exists(p.join(resourcesPath, ...MARKER))) {
     return { appPath: null, checkable: false, reason: t('This is not a build from the Worktabs releases.') };
   }
   if (platform === 'win32') {

@@ -8,7 +8,7 @@ const test = require('node:test');
 const { assetName, checksumOf, fetchReleases, newestRelease } = require('../src/self-update/releases');
 const { updateTarget } = require('../src/self-update/target');
 const { findStagedApp, removeLeftovers, stageRelease, stagingPaths } = require('../src/self-update/stage');
-const { psString, readSwapResult, swapCommand, swapScript } = require('../src/self-update/swap');
+const { readSwapResult, swapCommand, swapScript } = require('../src/self-update/swap');
 const { createSelfUpdate } = require('../src/self-update/self-update');
 
 const WIN = { platform: 'win32', arch: 'x64' };
@@ -173,18 +173,95 @@ test('leftovers of an update are removed at the next start', () => {
   assert.deepEqual(fs.readdirSync(dir), ['Worktabs']);
 });
 
-test('the Windows swap gets its values in the encoded command', () => {
-  assert.equal(psString("C:\\it's"), "'C:\\it''s'");
-  const { command, args } = swapCommand({
-    platform: 'win32', pid: 42, appPath: "C:\\Programs\\Work'tabs", staged: 'C:\\Programs\\Work\'tabs.update', container: 'C:\\c', old: 'C:\\o',
+test('the Windows swap starts PowerShell through cmd, with its values in the environment', () => {
+  const options = {
+    platform: 'win32', pid: 42, appPath: "C:\\Programs\\Work'tabs", staged: "C:\\Programs\\Work'tabs.update", container: 'C:\\c', old: 'C:\\o',
     version: '1.0.0', result: 'C:\\r.json', relaunch: true,
-  });
-  assert.equal(command, 'powershell.exe');
+  };
+  const { command, args, env, verbatim } = swapCommand(options);
+  assert.equal(command, 'cmd.exe');
+  assert.deepEqual(args.slice(0, 6), ['/d', '/c', 'start', '""', '/min', 'powershell.exe']);
   assert.equal(args.at(-2), '-EncodedCommand');
-  const script = Buffer.from(args.at(-1), 'base64').toString('utf16le');
-  assert.match(script, /^\$AppPid = 42\n\$AppDir = 'C:\\Programs\\Work''tabs'\n/);
-  assert.match(script, /\$Relaunch = \$true/);
-  assert.match(script, /DisplayVersion/);
+  assert.equal(verbatim, true);
+  assert.match(Buffer.from(args.at(-1), 'base64').toString('utf16le'), /DisplayVersion/);
+  assert.deepEqual(JSON.parse(env.WORKTABS_SWAP), {
+    pid: 42, appPath: "C:\\Programs\\Work'tabs", staged: "C:\\Programs\\Work'tabs.update", container: 'C:\\c', old: 'C:\\o',
+    version: '1.0.0', result: 'C:\\r.json', relaunch: true, tries: 60,
+  });
+  // cmd refuses a command line longer than 8191 characters, so it must not grow with the paths.
+  assert.deepEqual(swapCommand({ ...options, appPath: `C:\\${'x'.repeat(240)}` }).args, args);
+  assert.ok([command, ...args].join(' ').length < 8191);
+});
+
+// The PowerShell script itself, started as main.js starts it. It reports before it removes what
+// it no longer needs, so `done` says when it has finished.
+async function windowsSwap(options, done) {
+  const { command, args, env, verbatim } = swapCommand({ platform: 'win32', version: '9.9.9', relaunch: false, ...options });
+  spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: verbatim, env: { ...process.env, ...env } }).unref();
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    let result = null;
+    // Busy while PowerShell writes it.
+    try { result = readSwapResult(fs.readFileSync(options.result, 'utf8')); } catch {}
+    if (result && done()) return result;
+    if (Date.now() > deadline) throw new Error('The swap did not finish.');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+test('the PowerShell swap waits for the app to exit, then puts the new folder in place', { skip: process.platform !== 'win32' }, async () => {
+  const dir = tempDir();
+  const app = path.join(dir, 'Worktabs');
+  const container = `${app}.update`;
+  fs.mkdirSync(app);
+  fs.writeFileSync(path.join(app, 'version'), 'old');
+  fs.mkdirSync(container);
+  fs.writeFileSync(path.join(container, 'version'), 'new');
+  const result = path.join(dir, 'result.json');
+  const running = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 2000)']);
+  let exited = 0;
+  running.on('exit', () => { exited = Date.now(); });
+  const outcome = await windowsSwap({ pid: running.pid, appPath: app, staged: container, container, old: `${app}.old`, result }, () => !fs.existsSync(`${app}.old`));
+  assert.deepEqual(outcome, { version: '9.9.9', ok: true, error: '' });
+  assert.ok(exited && fs.statSync(result).mtimeMs >= exited, 'it waited for the app');
+  assert.equal(fs.readFileSync(path.join(app, 'version'), 'utf8'), 'new');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['Worktabs', 'result.json']);
+});
+
+// Holds a file open without sharing, as antivirus can, from another program: Node shares what it
+// opens. The returned function lets it go.
+async function holdFile(file) {
+  const holder = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    "$f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None'); 'held'; [void][Console]::In.ReadLine()"],
+  { stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, HELD: file } });
+  await new Promise((resolve, reject) => {
+    holder.stdout.once('data', resolve);
+    holder.once('exit', () => reject(new Error(`Could not hold ${file}.`)));
+  });
+  return () => new Promise((resolve) => { holder.once('exit', resolve); holder.stdin.end(); });
+}
+
+test('the PowerShell swap leaves the app whole when a file in it is held', { skip: process.platform !== 'win32' }, async () => {
+  const dir = tempDir();
+  const app = path.join(dir, 'Worktabs');
+  const container = `${app}.update`;
+  fs.mkdirSync(path.join(app, 'sub'), { recursive: true });
+  const files = ['a.dll', 'held.txt', 'z.exe', path.join('sub', 's.bin')];
+  for (const file of files) fs.writeFileSync(path.join(app, file), 'old');
+  fs.mkdirSync(container);
+  fs.writeFileSync(path.join(container, 'version'), 'new');
+  const result = path.join(dir, 'result.json');
+  const release = await holdFile(path.join(app, 'held.txt'));
+  let outcome;
+  try {
+    outcome = await windowsSwap({ pid: 999999, appPath: app, staged: container, container, old: `${app}.old`, result, tries: 2 }, () => !fs.existsSync(container));
+  } finally {
+    await release();
+  }
+  assert.equal(outcome.ok, false);
+  assert.ok(outcome.error);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['Worktabs', 'result.json']);
+  for (const file of files) assert.equal(fs.readFileSync(path.join(app, file), 'utf8'), 'old');
 });
 
 test('the swap result is read, with or without a byte order mark', () => {

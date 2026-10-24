@@ -6,23 +6,26 @@
 //
 // The script writes { version, ok, error } to `result` for the next start to show.
 
-// A PowerShell string literal.
-function psString(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
 const POWERSHELL = String.raw`
 $ErrorActionPreference = 'Stop'
+# The values (swapCommand), which the app it starts does not get.
+$values = $env:WORKTABS_SWAP | ConvertFrom-Json
+Remove-Item -LiteralPath Env:WORKTABS_SWAP
+$AppPid = $values.pid; $AppDir = $values.appPath; $Staged = $values.staged; $Container = $values.container
+$Old = $values.old; $Version = $values.version; $Result = $values.result; $Relaunch = $values.relaunch; $Tries = $values.tries
 function Write-Result($ok, $message) {
   @{ version = $Version; ok = $ok; error = $message } | ConvertTo-Json -Compress |
     Set-Content -LiteralPath $Result -Encoding UTF8
 }
 function Move-Retrying($from, $to) {
-  # Antivirus and the search indexer hold files for a moment after a program exits.
-  for ($i = 0; $i -lt 60; $i++) {
-    try { Move-Item -LiteralPath $from -Destination $to; return } catch { Start-Sleep -Milliseconds 500 }
+  # Antivirus and the search indexer hold files for a moment after a program exits. A rename
+  # moves the whole folder or nothing. Move-Item moves the files one by one when the folder
+  # cannot be renamed, stops at the one held, and on the next try moves the rest into the
+  # half-filled destination, which leaves neither version whole.
+  for ($i = 1; $i -lt $Tries; $i++) {
+    try { [IO.Directory]::Move($from, $to); return } catch { Start-Sleep -Milliseconds 500 }
   }
-  Move-Item -LiteralPath $from -Destination $to
+  try { [IO.Directory]::Move($from, $to) } catch { throw $_.Exception.GetBaseException() }
 }
 function Start-App {
   if ($Relaunch) { Start-Process -FilePath (Join-Path $AppDir 'Worktabs.exe') -WorkingDirectory $AppDir }
@@ -65,6 +68,12 @@ Remove-Item -LiteralPath $Old -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $Container -Recurse -Force -ErrorAction SilentlyContinue
 `;
 
+// Without its comments and indentation: cmd takes at most 8191 characters (swapCommand), and
+// -EncodedCommand is almost three times as long as the script.
+const POWERSHELL_ENCODED = Buffer.from(
+  POWERSHELL.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#')).join('\n'), 'utf16le',
+).toString('base64');
+
 // On macOS a running program does not hold its folder, so only the app's own exit is waited for.
 // Errors are a step's name: sh has no JSON, and the app words them. `open` does not pass this
 // environment on, so a separate data folder (WORKTABS_DATA_DIR) goes with --env, and -n starts
@@ -103,24 +112,30 @@ rm -rf "$old" "$container"
 `;
 
 /**
- * The command that swaps in the staged app, as { command, args }.
+ * The command that swaps in the staged app, as { command, args, env, verbatim }: `env` goes into
+ * its environment, and `verbatim` is spawn's windowsVerbatimArguments.
  * @param {{ platform?: string, pid: number, appPath: string, staged: string, container: string,
- *   old: string, version: string, result: string, relaunch: boolean, script?: string }} options
- *   `script`: on macOS, the file the shell script was written to (swapScript).
+ *   old: string, version: string, result: string, relaunch: boolean, script?: string, tries?: number }} options
+ *   `script`: on macOS, the file the shell script was written to (swapScript). `tries`: on
+ *   Windows, how many times each folder is renamed before giving up, half a second apart.
+ * @returns {{ command: string, args: string[], env: Record<string, string>, verbatim: boolean }}
  */
-function swapCommand({ platform = process.platform, pid, appPath, staged, container, old, version, result, relaunch, script }) {
+function swapCommand({ platform = process.platform, pid, appPath, staged, container, old, version, result, relaunch, script, tries = 60 }) {
   if (platform === 'win32') {
-    // The values go into the script, and the script goes in as -EncodedCommand: a policy that
-    // allows only signed script files does not apply to a command.
-    const values = [
-      `$AppPid = ${Number(pid)}`, `$AppDir = ${psString(appPath)}`, `$Staged = ${psString(staged)}`,
-      `$Container = ${psString(container)}`, `$Old = ${psString(old)}`, `$Version = ${psString(version)}`,
-      `$Result = ${psString(result)}`, `$Relaunch = $${relaunch ? 'true' : 'false'}`,
-    ].join('\n');
-    const encoded = Buffer.from(`${values}\n${POWERSHELL}`, 'utf16le').toString('base64');
-    return { command: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded] };
+    // Windows PowerShell started without a console (spawn's `detached`) exits at once and runs
+    // nothing, and one started with the app's console is in the app's job, which ends it when the
+    // app quits. cmd's `start` gives it a console of its own. The script goes in as
+    // -EncodedCommand: a policy that allows only signed script files does not apply to a command.
+    // cmd takes at most 8191 characters and the script takes most of them, so the values go in
+    // the environment. The arguments then need no quoting, and cmd does not read Node's quotes.
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/c', 'start', '""', '/min', 'powershell.exe', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', POWERSHELL_ENCODED],
+      env: { WORKTABS_SWAP: JSON.stringify({ pid: Number(pid), appPath, staged, container, old, version, result, relaunch, tries }) },
+      verbatim: true,
+    };
   }
-  return { command: '/bin/sh', args: [script || '', String(pid), appPath, staged, container, old, version, result, relaunch ? '1' : '0'] };
+  return { command: '/bin/sh', args: [script || '', String(pid), appPath, staged, container, old, version, result, relaunch ? '1' : '0'], env: {}, verbatim: false };
 }
 
 // The shell script for macOS, written to a file for /bin/sh.
@@ -137,4 +152,4 @@ function readSwapResult(text) {
   } catch { return null; }
 }
 
-module.exports = { psString, readSwapResult, swapCommand, swapScript };
+module.exports = { readSwapResult, swapCommand, swapScript };

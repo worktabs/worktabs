@@ -85,7 +85,7 @@ async function stageRelease({ release, appPath, dataDir, platform = process.plat
     catch (error) { throw new Error(t('Cannot write to {folder}: {error}', { folder: path.dirname(appPath), error: error.message }), { cause: error }); }
     await extract(zip, container);
     const staged = findStagedApp(container, platform);
-    if (!staged || !fs.existsSync(path.join(resourcesOf(staged, platform), MARKER))) {
+    if (!staged || !fs.existsSync(path.join(resourcesOf(staged, platform), ...MARKER))) {
       removeTree(container);
       throw new Error(t('{file} does not hold a Worktabs release.', { file: release.asset.name }));
     }
