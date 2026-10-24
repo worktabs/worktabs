@@ -395,6 +395,18 @@ The wire events are described in the [official OpenAI app-server documentation](
 
 These are internal extension shapes, not a public API. Each read discovers the current tree again so history switches and replaced buttons do not reuse stale props. Unknown shapes retain unread results, leave Codex's approval mode intact, and keep the onboarding UI available. Only exact conversation IDs clear unread. The approval watcher preserves trusted user choices and confirms a selection on a later snapshot. Onboarding remains limited to linked worktrees and calls the walkthrough's own completion callback. Reinjection disposes the previous watcher; disposed watchers ignore late asynchronous results.
 
+## Codex's module preloads
+
+Codex 26.1021.22027 (release and pre-release) preloads 3,203 modules (73 MB) before its chat starts. Vite's preload helper adds a `<link rel="modulepreload">` to the page for each one, after comparing it with every `<link>` already there.
+
+- code-server serves a webview from the workbench's own origin, so the webview ran on the workbench's main thread. That loop stopped the whole tab for seconds at a time, and the chat never started within the extension's 30 seconds, as the same thread has to answer the webview's resource requests.
+- On a site of its own ([above](#webviews-on-sites-of-their-own)), in a process of its own, the page on screen still stopped answering for good on a busy machine: with four Codex tabs opened at once, four times out of four. One thread of its process ran at 100%, outside JavaScript.
+- With the preload list emptied at runtime, it did not happen, and the chat started in 5 to 12 seconds. The modules load anyway, as the chat imports them; the links only fetch them ahead.
+- So the Codex chat's page appends no `<link rel="modulepreload">` (`src/codex/codex-frame-preload.js`). Links the page's HTML has are left as they are.
+- The script is a preload registered on the tabs' session (`registerPreloadScript`), and the tabs' views set `nodeIntegrationInSubFrames`, so that it runs in their frames, not only in the page. Electron runs it in VS Code's webview host frame (`.../webview/browser/pre/index.html`), but not in the frame inside it that holds the chat's page: the host creates that frame from a script, loads `fake.html` in it, and writes the page into it with `document.write` a moment after `fake.html`'s `DOMContentLoaded`. So in the host frame of Codex's webview (its address names `openai.chatgpt`), the script watches the frames the host adds, and changes `appendChild` in each one's window at that `DOMContentLoaded`. `document.write` keeps the window, so the change is there when the page's scripts run.
+- Codex 26.51007.21434 preloads nothing this way, so nothing changes for it.
+- Codex is made for VS Code's desktop app, where this does not show. Making it work in code-server is Worktabs's part, as with the webviews' sites.
+
 ## Codex approval preference
 
 - `codexApprovalMode` in the Worktabs config is independent of Claude's `permissionMode`. Settings save `auto-review` or `manual`; the default is automatic review when available.
@@ -501,6 +513,6 @@ VS Code Web defaults to `files.autoSave: afterDelay` (auto save after about 1 se
 
 ## Isolation of the views and the packaged app
 
-Every view (the tabs, the sidebar, the dialog page) is made with `viewPreferences` in `src/window/web-preferences.js`: context isolation and the sandbox on, Node integration off. These are Electron's defaults; they are spelled out so that a test fails if a change turns one off. The tabs show code-server, a page the app does not control, and the sidebar and the dialog page reach the main process only through what their preloads expose. The tabs' preload (`src/tabs/tab-preload.js`) exposes nothing; it only moves the webviews to sites of their own ([above](#webviews-on-sites-of-their-own)).
+Every view (the tabs, the sidebar, the dialog page) is made with `viewPreferences` in `src/window/web-preferences.js`: context isolation and the sandbox on, Node integration off. These are Electron's defaults; they are spelled out so that a test fails if a change turns one off. The tabs show code-server, a page the app does not control, and the sidebar and the dialog page reach the main process only through what their preloads expose. The tabs' preload (`src/tabs/tab-preload.js`) exposes nothing; it only moves the webviews to sites of their own ([above](#webviews-on-sites-of-their-own)). The tabs' views (and the update probe's) also set `nodeIntegrationInSubFrames`, so that the preload registered on their session runs in their frames too ([above](#codexs-module-preloads)). With the sandbox on, that gives no frame Node; the script exposes nothing and acts only in Codex's webview.
 
 The packaged app flips two of Electron's fuses (`electronFuses` in `package.json`): it ignores the `NODE_OPTIONS` and `NODE_EXTRA_CA_CERTS` variables and the `--inspect` arguments, so another program cannot run its own code in the app's process through them. The RunAsNode fuse stays on: on macOS the claude wrapper (`src/agents/mac-claude-wrap.js`) and the login shell's environment (`src/shell-env.js`) run the app's own executable as Node with `ELECTRON_RUN_AS_NODE`. The fuses apply only to `npm run pack` and the builds after it; `npm start` runs Electron as it comes.
