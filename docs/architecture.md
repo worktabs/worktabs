@@ -427,6 +427,7 @@ What the app waits for in an agent chat's page, it waits for there (`waitInPage`
 - The Codex task of a new worktree (`codexTaskScript`) waits up to 10 seconds for the composer, then puts the task in. The check that a chat has started (`chatStartedScript`) waits up to 5, and so does the check that a conversation row brought its Codex thread to the front (`codexNavigationScript`).
 - The waits are bounded, so that the app asks again: a frame that VS Code replaced meanwhile no longer answers, and Electron disposes a frame's first object when the chat's page is written into the frame.
 - With three worktrees and their tasks added at once (Codex 26.51007.21434), the app made 15 calls into the pages instead of 93, and the tasks landed as soon as before (8.5 to 9.2 seconds, against 8.7 to 8.9). With a Codex chat that never started, the check made 11 calls in its minute instead of about 60. Bringing a Codex thread to the front took 2 calls instead of 4 or 5 in a chat already loaded (confirmed in 0.2 to 0.5 seconds), and 2 instead of 21 right after the page reloaded (2.5 seconds, as before).
+- The check that a conversation shown is no longer unread (`SeenConversations`) still asks every 1.5 seconds, and only while the tab in front has an unread conversation. Whether a chat is in view is known only in the workbench's page, which changes all the time while one types (a check there on each change would lay the page out each time), and a chat that VS Code hides is still laid out in its own frame, so the chat's page cannot tell.
 
 ## Codex approval preference
 
