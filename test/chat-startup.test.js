@@ -10,10 +10,12 @@ function clock() {
 }
 
 // A chat frame whose page has started after `startsAfter` answers (never with null). `answer`:
-// how it answers instead, as a function of the attempt.
-function chatFrame({ startsAfter = null, answer = null } = {}) {
+// how it answers instead, as a function of the attempt. A page that never answers does not answer
+// a script that returns at once either.
+function chatFrame({ startsAfter = null, answer = null, stuck = false } = {}) {
   const frame = { attempts: 0 };
   frame.executeJavaScript = async (script) => {
+    if (script === 'true') return stuck ? new Promise(() => {}) : true;
     assert.equal(script, chatStartedScript(0));
     frame.attempts++;
     if (answer) return answer(frame.attempts);
@@ -48,12 +50,31 @@ test('a chat starts, starts late, gets stuck, or goes away', async () => {
   const late = chatFrame();
   assert.equal(await outcome([late]), 'late');
   assert.equal(late.attempts, 61, 'once a second, for a minute');
-  assert.equal(await outcome([chatFrame({ answer: (n) => (n < 3 ? false : new Promise(() => {})) })], { answerTimeout: 5 }), 'stuck');
+  assert.equal(await outcome([chatFrame({ answer: (n) => (n < 3 ? false : new Promise(() => {})), stuck: true })], { answerTimeout: 5 }), 'stuck');
   let open = true;
   assert.equal(await outcome([chatFrame({ answer: () => { open = false; return false; } })], { current: () => open }), 'gone');
   assert.equal(await outcome([]), 'gone');
   // One of the agent's chats that has started is enough.
   assert.equal(await outcome([chatFrame(), chatFrame({ startsAfter: 0 })]), 'started');
+});
+
+test('a check that is never answered counts only when the page does not answer at once either', async () => {
+  // As when VS Code writes the chat's page into the frame while the check waits in it.
+  const lost = (pings) => {
+    const frame = { checks: 0, pings: 0 };
+    frame.executeJavaScript = (script) => {
+      if (script === 'true') { frame.pings++; return pings ? Promise.resolve(true) : new Promise(() => {}); }
+      frame.checks++;
+      return frame.checks === 1 ? new Promise(() => {}) : Promise.resolve(frame.checks > 2);
+    };
+    return frame;
+  };
+  const answering = lost(true);
+  assert.equal(await chatStartup(() => [answering], { current: () => true, ...clock(), answerTimeout: 5 }), 'started');
+  assert.deepEqual([answering.checks, answering.pings], [3, 1]);
+  const stuck = lost(false);
+  assert.equal(await chatStartup(() => [stuck], { current: () => true, ...clock(), answerTimeout: 5 }), 'stuck');
+  assert.deepEqual([stuck.checks, stuck.pings], [1, 1]);
 });
 
 test('the frames are looked up for each check, and the minute runs on as they are replaced', async () => {
@@ -109,7 +130,7 @@ test('a chat that does not start is told once for its version, with the previous
 });
 
 test('a chat that stops answering while it starts is told so', async () => {
-  const { watch, calls, tab } = setup({ frames: () => [chatFrame({ answer: () => new Promise(() => {}) })] });
+  const { watch, calls, tab } = setup({ frames: () => [chatFrame({ answer: () => new Promise(() => {}), stuck: true })] });
   await watch.watch(tab, 'codex');
   assert.match(calls[0][1].detail, /^The Codex 26\.1021\.22027 chat in app-fix stopped responding while it started\./);
 });
