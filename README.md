@@ -111,7 +111,7 @@ The settings file is `%APPDATA%\Worktabs\config.json` on Windows and `~/Library/
 | `repos` | Repositories added by hand |
 | `codeServerDir` | Use an existing code-server instead of downloading one |
 | `codeServerVersion` | The code-server version to download (default: the tested version) |
-| `updateCheck` | Check for new versions of code-server and extensions at start (default `true`) |
+| `updateCheck` | Check for new versions of Worktabs, code-server, and extensions at start (default `true`) |
 | `extensions` | Extensions to install from Open VSX (default: Claude Code). The language pack of the display language is added |
 | `locale` | Display language of the app and of VS Code. Empty (the default) follows the system |
 | `permissionMode` | Initial permission mode of new conversations (`auto`, `manual`, `acceptEdits`, `plan`). Default `auto` |

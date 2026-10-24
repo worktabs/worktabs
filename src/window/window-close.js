@@ -4,8 +4,8 @@ const { t } = require('../i18n');
 
 // `cancelDialogs()`: answers the dialogs up as canceled. `risks()`: the lines of what quitting
 // would lose. `beforeClose()`: what is saved once quitting is confirmed. `close()`: closes the
-// window again, this time for good.
-function createCloseGuard({ cancelDialogs, risks, messageBox, beforeClose, close }) {
+// window again, this time for good. `canceled()`: told when the user keeps the window open.
+function createCloseGuard({ cancelDialogs, risks, messageBox, beforeClose, close, canceled = () => {} }) {
   let confirmed = false;
   // Checking, or asking: closing again meanwhile does nothing.
   let closing = false;
@@ -30,7 +30,10 @@ function createCloseGuard({ cancelDialogs, risks, messageBox, beforeClose, close
           message: t('Quitting will have these effects.'),
           detail: details.join('\n'),
         });
-        if (response !== 0) return;
+        if (response !== 0) {
+          canceled();
+          return;
+        }
       }
       await beforeClose();
     } finally {

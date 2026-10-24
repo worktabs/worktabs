@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Document, makeDocument } = require('./support/sidebar-dom');
 const { PROGRESS_CYCLE_MS, createUpdateCard } = require('../src/sidebar/update-card');
+const { createAppUpdateCard } = require('../src/sidebar/app-update-card');
 const { createPageTheme } = require('../src/sidebar/page-theme');
 const { attachSidebarResize } = require('../src/sidebar/resize');
 const { createGithubBar } = require('../src/sidebar/github-bar');
@@ -67,6 +68,52 @@ test('the update card hides without an update, and offers what each state allows
   const bar = element.querySelector('.update-progress');
   assert.equal(bar.style.values['--phase'], '-100ms');
   assert.equal(element.querySelectorAll('button').length, 0);
+});
+
+test('the Worktabs update card offers what each state allows', () => {
+  const { document, el } = dom();
+  const element = document.createElement('section');
+  const calls = [];
+  const host = new Proxy({}, { get: (_target, name) => () => calls.push(name) });
+  const card = createAppUpdateCard({ element, host, dom: { el }, t, listText: (items) => items.join(', '), clock: () => 1500 });
+  const labels = () => element.querySelectorAll('.update-actions button').map((button) => button.textContent);
+  const base = { version: '0.6.0', from: '0.5.2', notesUrl: 'https://example.test' };
+  card.render(null);
+  assert.equal(element.hidden, true);
+  card.render({ status: 'none' });
+  assert.equal(element.hidden, true);
+
+  card.render({ status: 'available', ...base, canApply: true, detail: '' });
+  assert.equal(element.hidden, false);
+  assert.equal(element.className, 'update available');
+  assert.match(element.textContent, /Worktabs 0\.6\.0 is available.*Worktabs.*0\.5\.2 → 0\.6\.0/);
+  assert.deepEqual(labels(), ['Update', 'Release notes', 'Skip this version']);
+  for (const button of element.querySelectorAll('button')) button.click();
+  assert.deepEqual(calls, ['dismissAppUpdate', 'startAppUpdate', 'openAppReleaseNotes', 'skipAppUpdate']);
+
+  card.render({ status: 'available', ...base, canApply: false, detail: 'Worktabs is at the root of a drive.' });
+  assert.deepEqual(labels(), ['Release page', 'Skip this version']);
+  assert.equal(element.querySelector('.update-detail').textContent, 'Worktabs is at the root of a drive.\nDownload it from the release page.');
+
+  card.render({ status: 'downloading', ...base, detail: '5 / 100 MB' });
+  assert.equal(element.className, 'update preparing');
+  assert.equal(element.querySelector('.update-progress').style.values['--phase'], '-100ms');
+  assert.deepEqual(labels(), []);
+
+  card.render({ status: 'ready', ...base });
+  assert.match(element.textContent, /installs when Worktabs quits/);
+  assert.deepEqual(labels(), ['Restart now', 'Release notes']);
+  assert.equal(element.querySelector('.close'), null);
+
+  card.render({ status: 'waiting', ...base, busy: ['a', 'b'], detail: 'Wait.' });
+  assert.equal(element.querySelector('.update-detail').textContent, 'Waiting for: a, b\nWait.');
+  assert.deepEqual(labels(), ['Cancel the restart']);
+
+  card.render({ status: 'failed', ...base, canApply: true, detail: 'HTTP 404' });
+  assert.deepEqual(labels(), ['Try again', 'Release page']);
+  card.render({ status: 'done', version: '0.6.0', from: '', notesUrl: '' });
+  assert.match(element.textContent, /Updated to Worktabs 0\.6\.0/);
+  assert.equal(element.querySelector('.update-items'), null);
 });
 
 test('the page theme puts a theme\'s colors on the root, and follows the system without one', () => {

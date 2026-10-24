@@ -472,6 +472,16 @@ The app relies on internal behavior of code-server and the extensions (the `?fol
 - Extensions are installed with the code-server command in use before the update. Rolling back works the same way.
 - WSL keeps separate Linux imports. Claude uses its Linux publication rather than a Windows pin; other app-managed extensions retain synchronization where applicable. Prepared imports apply at the next matching WSL start. Transactional snapshot restoration and the hidden probe currently run locally, not in WSL.
 
+### Updating Worktabs itself
+
+`src/self-update/` updates the app from the zip of its newest GitHub release, on Windows too, rather than running the installer ([usage.md](usage.md#updating-worktabs)).
+
+- `releases.js` reads the releases (through `gh api` when it is signed in, as for code-server) and picks the newest one that is not a draft or a prerelease and has the zip for this machine and `SHA256SUMS.txt`.
+- `target.js` decides what to replace: the folder of `Worktabs.exe`, or `Worktabs.app`. Only builds from `release.yml` look for releases. It writes `native/release.json` into them, so a build of your own (`npm run pack`, `update-worktabs.cmd`) is never replaced by a release.
+- `stage.js` downloads the zip, checks its SHA-256, and extracts it into `<app>.update` beside the app, on the same drive. On Windows it copies the installer's uninstaller into it, since the zip has none.
+- `swap.js` runs after the app quits. Windows does not let a folder be renamed while a program in it runs, and `claude-wrap.exe` runs from `resources\native` for every conversation. So the swap cannot happen while the app runs. A PowerShell command (Windows) or a shell script (macOS) waits for the app, and on Windows for every process started from its folder, then renames the app to `<app>.old` and `<app>.update` to the app, renames it back if that fails, and starts the new version after "Restart now". On Windows it also sets `DisplayVersion` in the installer's uninstall entry. The PowerShell goes in as `-EncodedCommand`, which a policy that allows only signed scripts does not block. `cmd`'s `start` starts it, since Windows PowerShell started without a console runs nothing. Its values go in the environment, since `cmd` takes at most 8191 characters. Each folder is renamed whole or not at all (`[IO.Directory]::Move`): `Move-Item` moves the files one by one when a file in the folder is held, and can leave neither version whole. The result goes to `app-update/result.json` in the data folder, and the next start shows it.
+- `self-update.js` holds the state the sidebar's card shows. "Restart now" waits for the tabs as code-server updates do (`updateRisks`), then closes the window, so the usual question before quitting still comes. Quitting without it still swaps in a ready update, without starting it.
+
 ## Unsaved edits
 
 VS Code Web defaults to `files.autoSave: afterDelay` (auto save after about 1 second), so edits are rarely lost. In case auto save is turned off, the app checks for unsaved editors before close, suspend, restart, reload, and exit. If there are any, it asks for confirmation, and the tab is also excluded from automatic suspend when idle.

@@ -12,6 +12,7 @@ function setup({ risks = [], response = 0 } = {}) {
     messageBox: (options) => { asked.push(options); return new Promise((resolve) => { release = () => resolve({ response }); }); },
     beforeClose: async () => calls.push('before'),
     close: () => calls.push('close'),
+    canceled: () => calls.push('canceled'),
   });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   return { guard, calls, asked, event, release: () => release() };
@@ -43,7 +44,7 @@ test('it asks first, and canceling keeps the window', async () => {
   assert.equal(asked.length, 1);
   release();
   await closing;
-  assert.deepEqual(calls, ['cancel']);
+  assert.deepEqual(calls, ['cancel', 'canceled']);
 });
 
 test('quitting from the question closes the window', async () => {

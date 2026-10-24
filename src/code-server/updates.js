@@ -148,4 +148,4 @@ async function findUpdates({ codeServerVersion, codeServerDir, extensionsDir, ex
   return { updates, errors };
 }
 
-module.exports = { findUpdates, startupExtensions };
+module.exports = { findUpdates, getJson, startupExtensions };

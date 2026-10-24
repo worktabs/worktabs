@@ -137,6 +137,16 @@ function appIpcRoutes(app) {
       'update:start': () => app.startUpdate(),
       'update:cancel': () => app.cancelUpdate(),
       'update:dismiss': () => app.dismissUpdate(),
+      // Of Worktabs itself. The release notes are the release's own page, not one the page names.
+      'app-update:start': () => app.selfUpdate.start(),
+      'app-update:restart': () => app.selfUpdate.restart(),
+      'app-update:cancel': () => app.selfUpdate.cancel(),
+      'app-update:skip': () => app.selfUpdate.skipVersion(),
+      'app-update:dismiss': () => app.selfUpdate.dismiss(),
+      'app-update:notes': () => {
+        const url = app.selfUpdate.state.notesUrl;
+        if (url) return app.openExternal(url);
+      },
 
       // ---- The app's dialogs
       'dialog:ready': () => app.dialogReady(),

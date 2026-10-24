@@ -187,7 +187,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
 
   return {
     coordinator, ...management,
-    setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
+    setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate, updateRisks,
   };
 }
 

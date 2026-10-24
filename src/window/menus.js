@@ -25,7 +25,8 @@ function githubPages() {
 }
 
 function createMenus({ popup, platform = process.platform, tabs, order, remotes, owned,
-  chooseFolder, addRepository, openTab, canUpdate, checkForUpdates, openSettingsDialog, openConfigFile,
+  chooseFolder, addRepository, openTab, canUpdate, checkForUpdates, canCheckApp = () => false, checkAppUpdate = () => {},
+  openSettingsDialog, openConfigFile,
   restartServer, suspendTab, reloadTab, closeTab, closeTabsTogether, addWorktreeDialog,
   removableWorktree, confirmRemoveWorktree, isGitFolder, openInExplorer, copy, openExternal,
   openGithub, branchPage, ownedRepo, isCloning, clonePlaces, startClone, hideOwner }) {
@@ -47,6 +48,8 @@ function createMenus({ popup, platform = process.platform, tabs, order, remotes,
   function showMoreMenu() {
     popup([
       { label: t('Check for code-server and extension updates'), enabled: canUpdate(), click: () => checkForUpdates({ manual: true }) },
+      // Builds of your own do not look for releases (self-update/target.js).
+      ...(canCheckApp() ? [{ label: t('Check for a new version of Worktabs'), click: () => checkAppUpdate() }] : []),
       { label: t('Extensions'), enabled: canUpdate(), click: () => openSettingsDialog('extensions') },
       { label: t('Open settings file'), click: () => openConfigFile() },
     ]);

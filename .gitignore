@@ -4,6 +4,8 @@ node_modules/
 # Build outputs (native/claude-wrap.exe and the helper VSIX are built with `npm run build:native`)
 *.exe
 *.vsix
+# Written by release.yml: only its builds update themselves (src/self-update/target.js)
+/native/release.json
 
 # Machine-specific settings (copy config.example.json)
 /config.local.json

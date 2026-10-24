@@ -27,7 +27,7 @@
 | `codeServerDir` | To use an existing code-server, the folder it was extracted to (where `lib/node.exe` is, or `lib/node` on macOS). If empty, the app downloads it to `code-server` in the data folder |
 | `codeServerVersion` | The code-server version to download (default `4.139.1`, the version tested). When you update from the sidebar, the app writes the new version here. The Linux build of the same version is installed in WSL |
 | `wslCodeServerDir` | For WSL tabs, to use an existing code-server (Linux build), the folder inside WSL it was extracted to, as a Linux path (where `lib/node` is). If empty, the app downloads it to `~/.worktabs/code-server` inside WSL |
-| `updateCheck` | At startup, checks GitHub and Open VSX for new versions of code-server and the extensions (default `true`). With `false`, you can still check by hand from "…" at the top of the sidebar |
+| `updateCheck` | At startup, checks GitHub and Open VSX for new versions of Worktabs, code-server, and the extensions (default `true`). With `false`, you can still check by hand from "…" at the top of the sidebar |
 | `extensionsDir` | The extensions folder shared by all instances. If empty, `extensions` in the data folder |
 | `extensions` | Extra IDs to install from Open VSX when missing, unless locked to an import. The language pack is added automatically ([extensions.md](extensions.md)) |
 | `restrictExtensionGallery` | Disable the embedded gallery (default `true`). Worktabs manages installs and updates; this is not a security sandbox |

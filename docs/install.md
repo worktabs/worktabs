@@ -67,6 +67,10 @@ The executable, installer, macOS Finder icon, and Windows shortcuts use the dark
 
 ## Upgrading to a new version
 
+From 0.6.0, Worktabs looks for a new version itself and updates from the sidebar ([usage.md](usage.md#updating-worktabs)). It works the same for the installed version, the zip version, and macOS, and it does not run the installer.
+
+To update by hand, or from a version before 0.6.0:
+
 - For the installed version, quit Worktabs, then run the installer of the new version. It replaces the previous version.
 - For the zip version, quit Worktabs, delete the contents of the folder, then extract the zip of the new version. Extracting over the old files leaves files that only the previous version had (the helper extension installs every VSIX in `resources\native`, so a leftover VSIX of an old version installs that old version too).
 - In both cases, the settings and data (`%APPDATA%\Worktabs`) stay, and the open tabs come back as they were.
