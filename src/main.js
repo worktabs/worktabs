@@ -63,7 +63,7 @@ const { SeenConversations } = require('./conversations/seen-conversations');
 const { displayLocale, language, messages, resolveLanguage, setLanguage, t, withLanguagePack } = require('./i18n');
 const { downloadRelease, ensureCodeServer } = require('./code-server/install');
 const { installWrapper } = require('./agents/mac-claude-wrap');
-const { agentExtensions, effectiveBranchAgent, isAgentExtension, managedAgentSettings, normalizeAgent } = require('./agents/agents');
+const { AGENTS, agentExtensions, effectiveBranchAgent, isAgentExtension, managedAgentSettings, normalizeAgent } = require('./agents/agents');
 const { settingsDialog } = require('./window/message-box');
 const { createDialogView } = require('./window/dialog-view');
 const { createCloseGuard } = require('./window/window-close');
@@ -72,7 +72,7 @@ const { createThemeState } = require('./window/theme-state');
 const { createViewState } = require('./window/view-state');
 const { parseLaunchArgs } = require('./conversations/notifications');
 const { ChatWidths } = require('./conversations/secondary-sidebar');
-const { WEBVIEW_FRAME, shownConversations, visibleCodexFrames } = require('./conversations/chat-frames');
+const { WEBVIEW_FRAME, agentChatFrames, shownConversations, visibleCodexFrames } = require('./conversations/chat-frames');
 const { createChatPanel } = require('./conversations/chat-panel');
 const { createHelperClient } = require('./tabs/helper-client');
 const { hostKeyAction } = require('./window/host-keys');
@@ -81,7 +81,9 @@ const { createTabRisks } = require('./tabs/tab-risks');
 const { SettingsSync } = require('./code-server/settings-sync');
 const { applyShellEnv, readShellEnv } = require('./shell-env');
 const { TabLifecycle } = require('./tabs/tab-lifecycle');
-const { createTabViews } = require('./tabs/tab-view');
+const { closeTabPage, createTabViews } = require('./tabs/tab-view');
+const { createChatStartupWatch } = require('./conversations/chat-startup');
+const { createWebviewSites } = require('./tabs/webview-sites');
 const { StartupGate } = require('./tabs/startup-gate');
 const { createAppUpdates } = require('./code-server/app-updates');
 const { prepareCodeServer, wrapperProblem } = require('./code-server/startup-preparation');
@@ -131,6 +133,19 @@ const {
 } = require('./repos/worktrees');
 
 const PARTITION = 'persist:worktabs';
+// The views that show code-server's workbench (the tabs and the update probe). Their preload
+// serves the webviews from sites of their own (tab-preload.js, webview-sites.js); their frames,
+// webviews included, also run the preload registered on their session (codex-frame-preload.js).
+const TAB_PRELOAD = path.join(__dirname, 'tabs', 'tab-preload.js');
+const WORKBENCH_VIEW = Object.freeze({ partition: PARTITION, preload: TAB_PRELOAD, backgroundThrottling: false, nodeIntegrationInSubFrames: true });
+const CODEX_FRAME_PRELOAD = path.join(__dirname, 'codex', 'codex-frame-preload.js');
+const webviewSites = createWebviewSites();
+
+// Sets an instance's session cookie, and has its webviews get it too.
+function connectInstance(port, cookie) {
+  webviewSites.connect(port, cookie);
+  return session.fromPartition(PARTITION).cookies.set({ url: `http://127.0.0.1:${port}/`, path: '/', sameSite: 'lax', ...cookie });
+}
 // Outside the asar archive in the packaged app, since Windows cannot run an exe from inside it
 // and code-server cannot read a VSIX there.
 const NATIVE_DIR = app.isPackaged ? path.join(process.resourcesPath, 'native') : path.join(__dirname, '..', 'native');
@@ -344,12 +359,36 @@ function messageBox(options) {
 // ---- Tabs ----------------------------------------------------------------------------------
 
 const createTabView = createTabViews({
-  makeView: () => new WebContentsView({ webPreferences: viewPreferences({ partition: PARTITION, backgroundThrottling: false }) }),
+  makeView: () => new WebContentsView({ webPreferences: viewPreferences(WORKBENCH_VIEW) }),
   frameOf: (processId, routingId) => webFrameMain.fromId(processId, routingId),
   folderFromUrl: (url) => codeServers.all().map((manager) => manager.folderFromUrl(url)).find(Boolean),
   openTab, openExternal: (url) => shell.openExternal(url), hostKeys: handleHostKeys,
   current: (tab) => lifecycle.current(tab), approvalMode: () => config.codexApprovalMode, changed: pushState,
+  chatLoaded: (tab, agent) => chatStartupWatch.watch(tab, agent),
 });
+
+// An agent chat that does not start in a tab is told once for each version of its extension,
+// with the previous version to go back to (chat-startup.js).
+const chatStartupWatch = createChatStartupWatch({
+  current: (tab) => lifecycle.current(tab), chatFrames: (tab, agent) => agentChatFrames(tab.view.webContents, agent),
+  versions: agentExtensionVersions, ask: messageBox,
+  rollback: (id) => rollbackExtension(id, localTarget()), reload: reloadTab, log: (line) => logUpdate(`chat: ${line}`),
+});
+
+// The version of the agent's extension that a tab runs, and the previous one that Settings can go
+// back to: only for an extension imported for this machine. A WSL tab runs the extensions of
+// another target, so neither is known there.
+function agentExtensionVersions(tab, agent) {
+  const id = AGENTS[agent].extension.toLowerCase();
+  if (parseWslPath(tab.folder)) return { id, version: '', previous: null };
+  const record = extensionImports.records(localTarget()).find((item) => item.id === id);
+  if (record) return { id, version: record.version, previous: record.previous?.version || null };
+  try {
+    return { id, version: localExtensions(config.resolvedExtensionsDir).find((item) => item.id === id)?.version || '', previous: null };
+  } catch {
+    return { id, version: '', previous: null };
+  }
+}
 
 // Electron and app services adapt the lifecycle's small operations here. They do not decide
 // whether an asynchronous result still belongs to a tab or to its current server start.
@@ -369,7 +408,7 @@ function tabDependencies() {
     },
     unmount: (tab) => {
       win.contentView.removeChildView(tab.view);
-      tab.view.webContents.close();
+      closeTabPage(tab.view.webContents);
     },
     lookupRepo: async (tab) => {
       const [repo, root] = await Promise.all([mainWorktree(tab.folder), repoRoot(tab.folder)]);
@@ -381,9 +420,7 @@ function tabDependencies() {
     managerFor: (tab) => codeServers.forFolder(tab.folder),
     canStart: (tab) => updateCoordinator.canStart(tab),
     startOptions: (tab) => ({ shareSettings: sharedTabSettings(tab) }),
-    connect: (_tab, { port, cookie }) => session.fromPartition(PARTITION).cookies.set({
-      url: `http://127.0.0.1:${port}/`, path: '/', sameSite: 'lax', ...cookie,
-    }),
+    connect: (_tab, { port, cookie }) => connectInstance(port, cookie),
     navigate: (tab, url) => tab.view.webContents.loadURL(url),
     placeholder: showTabPlaceholder,
     exitError: (code) => t('code-server ended (code {code}). Select the tab to restart it.', { code }),
@@ -541,9 +578,9 @@ function logUpdate(line) {
 
 const probeInstance = createUpdateProbe({
   dataDir, config, servers: codeServers.local, reserved: (id) => tabPorts.reserved(id), clearPortStorage, startupExtensions,
-  connect: (port, cookie) => session.fromPartition(PARTITION).cookies.set({ url: `http://127.0.0.1:${port}/`, path: '/', sameSite: 'lax', ...cookie }),
+  connect: connectInstance,
   hiddenView: () => {
-    const view = new WebContentsView({ webPreferences: viewPreferences({ partition: PARTITION, backgroundThrottling: false }) });
+    const view = new WebContentsView({ webPreferences: viewPreferences(WORKBENCH_VIEW) });
     view.setVisible(false);
     addView(view);
     view.setBounds(emptyView.getBounds());
@@ -832,9 +869,9 @@ const conversationOpening = createConversationOpening({
   tabs, helpers, sessions, activeId: () => lifecycle.activeId, runFor: (id) => lifecycle.runs.get(id),
   activateTab, callHelper, readTheme, startFirstConversation, showAgentChat,
   focused: () => Boolean(win?.isFocused()), messageBox, pushState, refreshSeen: () => seenConversations.refresh(),
-  read: async (tab) => {
+  read: async (tab, threadId) => {
     const frames = await visibleCodexFrames(tab.view.webContents);
-    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript()).catch(() => null)));
+    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript(threadId)).catch(() => null)));
   },
 });
 
@@ -962,6 +999,8 @@ app.whenReady().then(async () => {
   // VS Code's display language, and the extensions with the language pack it needs.
   config.resolvedLocale = displayLocale(config.locale, language());
   refreshResolvedExtensions();
+  session.fromPartition(PARTITION).registerPreloadScript({ type: 'frame', id: 'worktabs-codex-frame', filePath: CODEX_FRAME_PRELOAD });
+  webviewSites.attach(session.fromPartition(PARTITION));
   if (process.platform === 'darwin') Menu.setApplicationMenu(Menu.buildFromTemplate(macMenuTemplate()));
   // Electron starts taking clicks on notifications from Windows (as a COM server) with its first
   // notification. A click on one left from before the app started starts the app, and reaches

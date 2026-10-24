@@ -1,15 +1,19 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
-const { createTabViews } = require('../src/tabs/tab-view');
-const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME } = require('../src/conversations/chat-frames');
+const { closeTabPage, createTabViews } = require('../src/tabs/tab-view');
+const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME, pageFocusScript } = require('../src/conversations/chat-frames');
 const { codexApprovalScript } = require('../src/codex/codex-approval');
 const { codexOnboardingScript } = require('../src/agents/agent-onboarding');
 
-function setup({ open = true, frame = null } = {}) {
+function setup({ open = true, frame = null, frames = [] } = {}) {
   const calls = [];
+  const loaded = [];
   const contents = new EventEmitter();
   contents.getURL = () => 'http://127.0.0.1:5001/?folder=/src/app';
+  contents.focused = false;
+  contents.isFocused = () => contents.focused;
+  contents.mainFrame = { framesInSubtree: frames };
   contents.setWindowOpenHandler = (handler) => { contents.openHandler = handler; };
   const createTabView = createTabViews({
     makeView: () => ({ webContents: contents }),
@@ -21,8 +25,9 @@ function setup({ open = true, frame = null } = {}) {
     current: () => open,
     approvalMode: () => 'manual',
     changed: () => calls.push(['changed']),
+    chatLoaded: (tab, agent) => loaded.push([tab.id, agent]),
   });
-  return { createTabView, contents, calls };
+  return { createTabView, contents, calls, loaded };
 }
 
 test('new windows of a code-server folder become tabs, web links open in the browser, and nothing opens in Electron', () => {
@@ -62,7 +67,23 @@ test('a Claude chat frame gets the focus guard, and the main frame nothing', () 
   assert.deepEqual(calls, []);
   contents.emit('did-frame-finish-load', {}, false, 1, 2);
   assert.deepEqual(calls, [['frame', 1, 2]]);
-  assert.deepEqual(scripts, [CHAT_FOCUS_GUARD]);
+  assert.deepEqual(scripts, [pageFocusScript(false), CHAT_FOCUS_GUARD]);
+});
+
+test('the Claude chats are told when the page gets and loses the focus, which they cannot read from their own site', () => {
+  const claude = [];
+  const codex = [];
+  const { createTabView, contents } = setup({ frames: [chatFrame('Anthropic.claude-code', claude), chatFrame('openai.chatgpt', codex)] });
+  createTabView({ id: 't1' });
+  contents.focused = true;
+  contents.emit('focus');
+  contents.focused = false;
+  contents.emit('blur');
+  assert.deepEqual(claude, [pageFocusScript(true), pageFocusScript(false)]);
+  assert.deepEqual(codex, []);
+  // A page that has gone answers no more.
+  Object.defineProperty(contents, 'mainFrame', { get: () => { throw new Error('destroyed'); } });
+  assert.doesNotThrow(() => contents.emit('focus'));
 });
 
 test('a Codex chat frame gets the approval mode, and in a linked worktree the onboarding too', () => {
@@ -92,4 +113,43 @@ test('a page process that ends shows on its open tab only', () => {
   closed.createTabView(gone);
   closed.contents.emit('render-process-gone', {}, { reason: 'crashed' });
   assert.equal(gone.error, undefined);
+});
+
+// A page that records when it is closed, against a clock the waits move on.
+function closingPage() {
+  const events = [];
+  let destroyed = false;
+  let at = 0;
+  return {
+    events,
+    destroy: () => { destroyed = true; },
+    contents: { isDestroyed: () => destroyed, close: () => { events.push(['close', at]); destroyed = true; } },
+    sleep: async (ms) => { at += ms; events.push(['wait', ms]); },
+  };
+}
+
+test('a tab\'s page is closed a moment after it leaves the window, so that VS Code can save its state', async () => {
+  const page = closingPage();
+  await closeTabPage(page.contents, { sleep: page.sleep });
+  assert.deepEqual(page.events, [['wait', 500], ['close', 500]]);
+});
+
+test('a page that has gone meanwhile, or before, is not closed again', async () => {
+  const meanwhile = closingPage();
+  await closeTabPage(meanwhile.contents, { sleep: async (ms) => { await meanwhile.sleep(ms); meanwhile.destroy(); } });
+  assert.deepEqual(meanwhile.events, [['wait', 500]]);
+  const before = closingPage();
+  before.destroy();
+  await closeTabPage(before.contents, { sleep: before.sleep });
+  assert.deepEqual(before.events, []);
+});
+
+test('each agent chat frame that loads is watched as it starts; other frames are not', () => {
+  for (const [extensionId, agent] of [['Anthropic.claude-code', 'claude'], ['openai.chatgpt', 'codex'], ['vscode.markdown-language-features', null]]) {
+    const { createTabView, contents, loaded } = setup({ frame: chatFrame(extensionId, []) });
+    createTabView({ id: 't1' });
+    contents.emit('did-frame-finish-load', {}, true, 1, 2);
+    contents.emit('did-frame-finish-load', {}, false, 1, 2);
+    assert.deepEqual(loaded, agent ? [['t1', agent]] : []);
+  }
 });

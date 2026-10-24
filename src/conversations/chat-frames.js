@@ -12,6 +12,8 @@ const CHAT_EXTENSIONS = { claude: 'anthropic.claude-code', codex: 'openai.chatgp
 // of times a second until the window loses it. So a chat that does not have the
 // focus, while another part of the page does, cannot take it by script. Clicks still move the
 // focus, and VS Code still gives a chat the focus (it uses window.focus, which is left alone).
+// A chat served from a site of its own (tab-preload.js) cannot read the page, so the app tells
+// it whether the page has the focus (pageFocusScript).
 const CHAT_FOCUS_GUARD = `(() => {
   if (window.__worktabsFocusGuard) return;
   window.__worktabsFocusGuard = true;
@@ -19,7 +21,7 @@ const CHAT_FOCUS_GUARD = `(() => {
     try {
       return window.top.document.hasFocus();
     } catch {
-      return false;
+      return window.__worktabsPageFocus === true;
     }
   };
   for (const proto of [HTMLElement.prototype, SVGElement.prototype]) {
@@ -30,6 +32,11 @@ const CHAT_FOCUS_GUARD = `(() => {
     };
   }
 })()`;
+
+// Tells a chat whether its tab's page has the focus, for CHAT_FOCUS_GUARD.
+function pageFocusScript(focused) {
+  return `window.__worktabsPageFocus = ${Boolean(focused)}`;
+}
 
 // The page of an extension's webview: the frame (fake.html) that VS Code's webview host frame
 // writes the page into. The host frame's URL names the extension.
@@ -56,6 +63,16 @@ function chatAgent(frame) {
 // The Codex chats of the page, in view or not.
 function codexChatFrames(contents) {
   return contents.mainFrame.framesInSubtree.filter(isCodexChatFrame);
+}
+
+// The chats of `agent` ('claude' or 'codex') in the page, in view or not; none once the page has
+// gone.
+function agentChatFrames(contents, agent) {
+  try {
+    return contents.mainFrame.framesInSubtree.filter((frame) => chatAgent(frame) === agent);
+  } catch {
+    return [];
+  }
 }
 
 // The frames of the page whose webview is in view (VISIBLE_CHAT_FRAMES_SCRIPT names their host
@@ -86,11 +103,13 @@ async function shownConversations(contents) {
 module.exports = {
   CHAT_FOCUS_GUARD,
   WEBVIEW_FRAME,
+  agentChatFrames,
   chatAgent,
   codexChatFrames,
   isAgentChatFrame,
   isClaudeChatFrame,
   isCodexChatFrame,
+  pageFocusScript,
   shownConversations,
   visibleCodexFrames,
 };

@@ -455,5 +455,13 @@
   "GitHub limits requests from this network until {time}. To check sooner, run gh auth login in a terminal.": "このネットワークからの GitHub への問い合わせは {time} まで制限されています。すぐに確認するには、ターミナルで gh auth login を実行します。",
   "Open Settings first.": "先に設定を開いてください。",
   "Invalid extension ID.": "拡張の ID が不正です。",
-  "No updates are available.": "利用できる更新はありません。"
+  "No updates are available.": "利用できる更新はありません。",
+  "The {agent} chat did not start.": "{agent} のチャットが起動しませんでした。",
+  "{name} did not start its chat in {tab} within a minute.": "{tab} の {name} は、1 分たってもチャットが起動しませんでした。",
+  "The {name} chat in {tab} stopped responding while it started.": "{tab} の {name} のチャットは、起動の途中で応答しなくなりました。",
+  "Going back to the previous version, {previous}, restarts the tabs.": "以前のバージョン（{previous}）に戻すと、タブが再起動します。",
+  "Reload the tab to try again.": "タブを再読み込みすると、もう一度試せます。",
+  "Go back to {version}": "{version} に戻す",
+  "Reload the tab": "タブを再読み込み",
+  "Could not go back to the previous version.": "以前のバージョンに戻せませんでした。"
 }

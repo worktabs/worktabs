@@ -1,4 +1,8 @@
 const { webviewReactScript } = require('./webview-react');
+const { waitInPage } = require('./page-wait');
+
+// How long a check waits in the chat's page for the thread, before the app asks again.
+const PAGE_WAIT = 5000;
 
 // A successful URI dispatch is not proof that the requested chat rendered. Read the
 // mounted local thread context, including busy composers whose permission control is disabled.
@@ -12,18 +16,29 @@ function visibleCodexThread(document, propsOf) {
   } catch { return null; }
 }
 
-function codexNavigationScript() {
-  return webviewReactScript(`return (${visibleCodexThread})(document, (node) => { const found = reactAncestors(node); return found.available ? found.props : []; });`);
+// Waits in the chat's page, for up to `wait` milliseconds, until it shows `threadId`. Resolves
+// the thread it shows then (visibleCodexThread).
+function codexNavigationScript(threadId, wait = PAGE_WAIT) {
+  return webviewReactScript(`const propsOf = (node) => { const found = reactAncestors(node); return found.available ? found.props : []; };
+    return (${waitInPage})(() => (${visibleCodexThread})(document, propsOf), (shown) => shown === ${JSON.stringify(threadId)}, ${wait}, window);`);
 }
 
-// Fresh official webviews can take several seconds to load after the helper's URI ack.
-async function confirmCodexThread({ threadId, current, read, pause, timeout = 15000,
+// Fresh official webviews can take several seconds to load after the helper's URI ack. `read()`:
+// the threads the Codex chats in view show, each waiting in its page for `threadId` a while. A
+// read is given up after `readTimeout` and made again: one sent as VS Code writes the chat's page
+// into its frame may never be answered, though the page goes on.
+async function confirmCodexThread({ threadId, current, read, pause, timeout = 15000, readTimeout = PAGE_WAIT + 2000,
   setTimer = setTimeout, clearTimer = clearTimeout }) {
   let stopped = false, timer;
+  const readOnce = () => {
+    let readTimer;
+    return Promise.race([read(), new Promise((resolve) => { readTimer = setTimeout(resolve, readTimeout, null); })])
+      .finally(() => clearTimeout(readTimer));
+  };
   const wait = async () => {
     while (!stopped && current()) {
       let shown;
-      try { shown = await read(); } catch { shown = null; }
+      try { shown = await readOnce(); } catch { shown = null; }
       if (stopped || !current()) return false;
       if (Array.isArray(shown) && shown.length === 1 && shown[0] === threadId) return true;
       await pause();

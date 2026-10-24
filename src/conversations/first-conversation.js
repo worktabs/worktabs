@@ -1,4 +1,12 @@
 const { webviewReactScript } = require('./webview-react');
+const { waitInPage } = require('./page-wait');
+
+// The input's answers after which the task is not tried again.
+const REJECTED = ['input-rejected', 'input-unconfirmed'];
+
+// How long the task's script waits in the chat's page at most, before the app asks again: a frame
+// that VS Code replaced meanwhile no longer answers.
+const PAGE_WAIT = 10000;
 
 // Use the editor's native input path only in an empty, local, new-thread composer.
 // A retained history panel or a draft the user has started must never be overwritten.
@@ -30,13 +38,25 @@ function prefillCodexTask(document, prompt, propsOf) {
   } catch { return result('unavailable'); }
 }
 
-function codexTaskScript(prompt) {
-  return webviewReactScript(`return (${prefillCodexTask})(document, ${JSON.stringify(prompt)}, (node) => { const found = reactAncestors(node); return found.available ? found.props : []; });`);
+// Waits in the chat's page, for up to `wait` milliseconds, until its composer is ready for the
+// task and puts the task in (prefillCodexTask), or the input rejects it. Resolves the last result.
+function codexTaskScript(prompt, wait = PAGE_WAIT) {
+  return webviewReactScript(`const propsOf = (node) => { const found = reactAncestors(node); return found.available ? found.props : []; };
+    return (${waitInPage})(() => (${prefillCodexTask})(document, ${JSON.stringify(prompt)}, propsOf),
+      (result) => Boolean(result?.filled || ${JSON.stringify(REJECTED)}.includes(result?.reason)), ${wait}, window);`);
 }
 
+// How long the Codex chat has to show its composer for the task. The helper opens the new
+// conversation as soon as the tab's extension host is up, before the chat has started: it starts
+// in about 8 seconds, and in 10 or more on a busy machine (three worktrees added at once).
+const COMPOSER_WAIT = 60000;
+
 // Keep opening, bounded input retries, cancellation, and recovery testable without Electron.
+// `fill(wait)`: puts the task in the chat, waiting in its page for up to `wait` milliseconds;
+// resolves the result, or null when there is no chat to ask. `pause()`: until the page may have a
+// chat to ask (it has loaded a frame).
 async function startTaskConversation({ agent, prompt, open, fill, current, recover, pause,
-  attempts = 20 }) {
+  wait = COMPOSER_WAIT, now = Date.now }) {
   if (!current()) return;
   let answer;
   try { answer = await open(); } catch { answer = null; }
@@ -47,14 +67,14 @@ async function startTaskConversation({ agent, prompt, open, fill, current, recov
   }
   if (answer?.opened && !prompt) return;
   if (answer?.opened) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
+    for (const end = now() + wait; now() < end;) {
       if (!current()) return;
       let result;
-      try { result = await fill(); } catch { result = null; }
+      try { result = await fill(Math.min(PAGE_WAIT, end - now())); } catch { result = null; }
       if (!current()) return;
       if (result?.filled) return;
-      if (['input-rejected', 'input-unconfirmed'].includes(result?.reason)) break;
-      await pause();
+      if (REJECTED.includes(result?.reason)) break;
+      if (!result) await pause();
     }
   }
   if (current()) await recover();

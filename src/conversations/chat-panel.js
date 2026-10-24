@@ -13,7 +13,7 @@ const {
   resizeScript,
   secondaryView,
 } = require('./secondary-sidebar');
-const { agentLabel } = require('./session-notices');
+const { AGENTS } = require('../agents/agents');
 const { samePath } = require('../util');
 
 const isPrimary = (tab) => Boolean(tab.repo) && samePath(tab.repo, tab.folder);
@@ -21,8 +21,8 @@ const isPrimary = (tab) => Boolean(tab.repo) && samePath(tab.repo, tab.folder);
 // `chatWidths`: the width of the chat in each repository's primary (ChatWidths), kept with the
 // tabs by `saveTabs`. `runs`: the tab's current server start (TabLifecycle.runs).
 function createChatPanel({ tabs, runs, tabIdFor, tabAgent, chatWidths, saveTabs, callHelper,
-  messageBox, copy, pause = () => new Promise((resolve) => setTimeout(resolve, 250)),
-  late = () => new Promise((resolve) => setTimeout(resolve, 1000, null)) }) {
+  messageBox, copy, pause = (tab) => frameLoaded(tab.view.webContents, 1000),
+  late = (ms = 1000) => new Promise((resolve) => setTimeout(resolve, ms, null)) }) {
   // Puts the agent chat in the tab's secondary side bar when VS Code shows its own chat there, as
   // it does on a new port, leaving the focus where it is. The helper extension does it; that
   // would open the side bar even when it is closed, so the app looks first. A side bar closed, or
@@ -45,17 +45,19 @@ function createChatPanel({ tabs, runs, tabIdFor, tabAgent, chatWidths, saveTabs,
     const current = () => tabs.get(tab.id) === tab && runs(tab.id) === run && tab.server === 'running' && !tab.view.webContents.isDestroyed();
     await startTaskConversation({ agent, prompt, current,
       open: () => callHelper(tab.id, '/new-conversation', { agent, ...(prompt ? { prompt } : {}) }, { result: agent === 'codex' }),
-      fill: async () => {
+      // A page that stops answering, or a frame that goes without settling the script, gives up
+      // after the wait.
+      fill: async (wait) => {
         const frames = await visibleCodexFrames(tab.view.webContents).catch(() => []);
         if (frames.length !== 1) return null;
-        return frames[0].executeJavaScript(codexTaskScript(prompt), true).catch(() => null);
+        return Promise.race([frames[0].executeJavaScript(codexTaskScript(prompt, wait), true).catch(() => null), late(wait + 5000)]);
       },
-      pause,
+      pause: () => pause(tab),
       recover: async () => {
         await callHelper(tab.id, '/show-chat', { agent });
         if (!current()) return;
         const answer = await messageBox({ type: 'warning', message: t('The task could not be put in the new conversation.'),
-          detail: t('Open a new {agent} conversation and paste this task. Worktabs has not sent it.\n\n{prompt}', { agent: agentLabel(agent), prompt: prompt || '' }),
+          detail: t('Open a new {agent} conversation and paste this task. Worktabs has not sent it.\n\n{prompt}', { agent: AGENTS[agent].label, prompt: prompt || '' }),
           buttons: prompt ? [t('Close'), t('Copy task')] : [t('Close')], defaultId: 0, cancelId: 0 });
         if (answer.response === 1) copy(prompt);
       },
@@ -108,6 +110,19 @@ function createChatPanel({ tabs, runs, tabIdFor, tabAgent, chatWidths, saveTabs,
   }
 
   return { showAgentChat, startFirstConversation, fitChat, rememberChatWidth };
+}
+
+// Until a frame of the page has loaded, or `ms` have passed.
+function frameLoaded(contents, ms) {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      contents.off('did-frame-finish-load', done);
+      resolve(undefined);
+    };
+    const timer = setTimeout(done, ms);
+    contents.on('did-frame-finish-load', done);
+  });
 }
 
 module.exports = { createChatPanel };
