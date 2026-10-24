@@ -111,3 +111,14 @@ test('Open folder opens the folder picked, and updates need code-server', async 
   menus.showMoreMenu();
   assert.deepEqual(shown[1].map((item) => item.enabled), [false, false, undefined]);
 });
+
+test('the "…" menu ends with the version of Worktabs, whether or not it checks for new ones', () => {
+  for (const canCheckApp of [() => true, () => false]) {
+    const { menus, shown } = setup({ appVersion: '0.6.0', canCheckApp });
+    menus.showMoreMenu();
+    const items = shown[0];
+    assert.deepEqual(labels(items.slice(-2)), ['separator', 'Worktabs 0.6.0']);
+    assert.equal(items.at(-1).enabled, false);
+    assert.equal(labels(items).includes('Check for a new version of Worktabs'), canCheckApp());
+  }
+});

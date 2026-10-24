@@ -26,7 +26,7 @@ function githubPages() {
 
 function createMenus({ popup, platform = process.platform, tabs, order, remotes, owned,
   chooseFolder, addRepository, openTab, canUpdate, checkForUpdates, canCheckApp = () => false, checkAppUpdate = () => {},
-  openSettingsDialog, openConfigFile,
+  appVersion = '', openSettingsDialog, openConfigFile,
   restartServer, suspendTab, reloadTab, closeTab, closeTabsTogether, addWorktreeDialog,
   removableWorktree, confirmRemoveWorktree, isGitFolder, openInExplorer, copy, openExternal,
   openGithub, branchPage, ownedRepo, isCloning, clonePlaces, startClone, hideOwner }) {
@@ -52,6 +52,8 @@ function createMenus({ popup, platform = process.platform, tabs, order, remotes,
       ...(canCheckApp() ? [{ label: t('Check for a new version of Worktabs'), click: () => checkAppUpdate() }] : []),
       { label: t('Extensions'), enabled: canUpdate(), click: () => openSettingsDialog('extensions') },
       { label: t('Open settings file'), click: () => openConfigFile() },
+      // The version this is, also for builds of your own, which do not check for new ones.
+      ...(appVersion ? [{ type: 'separator' }, { label: t('Worktabs {version}', { version: appVersion }), enabled: false }] : []),
     ]);
   }
 
