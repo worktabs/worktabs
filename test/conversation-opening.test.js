@@ -42,7 +42,8 @@ function setup(overrides = {}) {
 }
 
 test('only the latest startup click is dispatched when the running helper registers', async () => {
-  const { service, helpers, tabs, calls, timers, seen } = setup({ read: async () => ['thread-two'] });
+  const read = [];
+  const { service, helpers, tabs, calls, timers, seen } = setup({ read: async (_tab, threadId) => { read.push(threadId); return ['thread-two']; } });
   helpers.clear();
   await service.revealSession('tab', 'one');
   const old = [...timers.values()][0];
@@ -55,6 +56,7 @@ test('only the latest startup click is dispatched when the running helper regist
   await turn();
   assert.equal(timers.size, 0);
   assert.deepEqual(calls.filter(([kind]) => kind === 'helper').map((entry) => entry[3].sessionId), ['thread-two']);
+  assert.deepEqual(read, ['thread-two'], 'the chat waits in its page for the thread asked for');
   assert.deepEqual(seen, [['tab', 'two']]);
 });
 

@@ -869,9 +869,9 @@ const conversationOpening = createConversationOpening({
   tabs, helpers, sessions, activeId: () => lifecycle.activeId, runFor: (id) => lifecycle.runs.get(id),
   activateTab, callHelper, readTheme, startFirstConversation, showAgentChat,
   focused: () => Boolean(win?.isFocused()), messageBox, pushState, refreshSeen: () => seenConversations.refresh(),
-  read: async (tab) => {
+  read: async (tab, threadId) => {
     const frames = await visibleCodexFrames(tab.view.webContents);
-    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript()).catch(() => null)));
+    return Promise.all(frames.map((frame) => frame.executeJavaScript(codexNavigationScript(threadId)).catch(() => null)));
   },
 });
 
