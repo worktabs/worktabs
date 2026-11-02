@@ -299,8 +299,13 @@ function launchArgs({ baseArgs, port, tabId, locale, folder }) {
 }
 async function prepareLaunch({ files, extensionsDir, userDataDir, userDir, managed = {},
   shareSettings, wrapperOptions, prepare = prepareCodex }) {
-  const wrapper = Object.hasOwn(managed, 'chatgpt.openOnStartup')
-    ? await prepare({ files, extensionsDir, dir: files.join(userDataDir, 'codex'), ...wrapperOptions }) : null;
+  // The Codex proxy goes in wherever the extension is installed (prepare finds none without it),
+  // even when the agents leave Codex out: the proxy is how the app sees whether Codex works in a
+  // tab, and updates wait for a tab where the extension runs unseen. Where Codex is left out, a
+  // proxy that cannot be prepared does not hold up the tab.
+  const enabled = Object.hasOwn(managed, 'chatgpt.openOnStartup');
+  const wrapper = await prepare({ files, extensionsDir, dir: files.join(userDataDir, 'codex'), ...wrapperOptions })
+    .catch((error) => { if (enabled) throw error; return null; });
   await writeLanguagePacks(files, userDataDir, extensionsDir);
   return writeSettings({ files, userDataDir, userDir, shareSettings,
     managed: { ...managed, 'chatgpt.cliExecutable': wrapper || undefined } });

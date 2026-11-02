@@ -132,6 +132,18 @@ test('preparation shares managed settings, paths and Codex launchers across file
   }
 });
 
+test('the Codex proxy goes in wherever its extension is installed, and only an enabled Codex fails the start without it', async (t) => {
+  const root = tempDir(t);
+  const launch = (managed, prepare) => prepareLaunch({ files: localFiles, extensionsDir: path.join(root, 'extensions'),
+    userDataDir: path.join(root, 'instances', 'tab'), userDir: (id) => path.join(root, 'instances', id, 'User'), managed,
+    wrapperOptions: { node: '/node' }, prepare, shareSettings: async ({ managed: written }) => written['chatgpt.cliExecutable'] });
+  // agents without Codex: no chatgpt.openOnStartup in the managed settings.
+  assert.equal(await launch({}, async () => '/codex-wrap'), '/codex-wrap');
+  assert.equal(await launch({}, async () => null), undefined);
+  assert.equal(await launch({}, async () => { throw new Error('no launcher'); }), undefined);
+  await assert.rejects(launch({ 'chatgpt.openOnStartup': false }, async () => { throw new Error('no launcher'); }), /no launcher/);
+});
+
 test('authentication uses fresh per-start secrets and locale-free arguments omit the locale flag', () => {
   const first = launchAuthentication('tab'); const second = launchAuthentication('tab');
   assert.match(first.sessionKey, /^[a-f0-9]{64}$/); assert.notEqual(first.sessionKey, second.sessionKey);
