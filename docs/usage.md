@@ -147,6 +147,9 @@ Worktabs also waits up to five seconds for the requested thread to appear in the
   - The time advances every minute. Hover over the row to see when the state started ("Working (since 14:03)").
   - The count starts again from 0 each time the state changes. When you approve and Claude goes back to work, the working time counts from the approval.
   - The times live only inside the app. After a restart, conversations start as idle, so no time shows until the next time work starts.
+- In the tab in front, the row of the conversation that a chat in view shows (in the right panel or an editor tab) is highlighted, as the row of the tab in front is. Its worktree row then keeps only the line at its left, so that one row stands out. With a chat in the right panel and another in an editor tab, both rows are highlighted.
+  - It follows a switch made inside the chat (from its history, or "New session") a moment after you click or press Enter or Escape in the tab, and when a conversation starts or a prompt is sent.
+  - While the chat is hidden or still loading, shows VS Code's own chat, or shows a conversation that cannot be identified, no conversation row is highlighted, and the worktree row is highlighted as before. A new conversation gets its highlight once its row appears.
 - Click a conversation row to switch to its tab and bring that conversation to the front. For a conversation in an editor tab, that editor tab comes to the front. For a conversation in the right panel (chat panel), the right panel switches to that conversation.
 - When you start a new conversation in the right panel, or pick another one from the history, the previous conversation keeps running in the background (its claude process stays). So the row of the previous conversation stays too. Click the row to switch the right panel back to it.
 - Hover over the row of an idle, done, or error conversation to see an archive button. Press it to remove the row from the list.

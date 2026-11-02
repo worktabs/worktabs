@@ -26,6 +26,7 @@ function setup({ open = true, frame = null, frames = [] } = {}) {
     approvalMode: () => 'manual',
     changed: () => calls.push(['changed']),
     chatLoaded: (tab, agent) => loaded.push([tab.id, agent]),
+    input: (tab) => calls.push(['input', tab.id]),
   });
   return { createTabView, contents, calls, loaded };
 }
@@ -50,6 +51,18 @@ test('leaving the page is not asked about, and the keys go to the app first', ()
   assert.deepEqual(calls, [['keys', 'Tab', true]]);
 });
 
+test('clicks and the keys that can switch conversations have the tab read the chat in view', () => {
+  const { createTabView, contents, calls } = setup();
+  createTabView({ id: 't1' });
+  contents.emit('before-mouse-event', {}, { type: 'mouseDown' });
+  contents.emit('before-mouse-event', {}, { type: 'mouseMove' });
+  contents.emit('before-mouse-event', {}, { type: 'mouseUp' });
+  for (const key of [{ key: 'a' }, { key: 'Enter' }, { key: 'Escape' }, { key: 'n', control: true }, { key: 'Enter', type: 'keyUp' }]) {
+    contents.emit('before-input-event', {}, { type: 'keyDown', ...key });
+  }
+  assert.deepEqual(calls.filter(([name]) => name === 'input'), [['input', 't1'], ['input', 't1'], ['input', 't1'], ['input', 't1']]);
+});
+
 // A chat's page frame, inside the webview host frame that names its extension.
 function chatFrame(extensionId, scripts) {
   const base = `http://127.0.0.1:5001/stable${WEBVIEW_FRAME}`;
@@ -66,7 +79,8 @@ test('a Claude chat frame gets the focus guard, and the main frame nothing', () 
   contents.emit('did-frame-finish-load', {}, true, 1, 2);
   assert.deepEqual(calls, []);
   contents.emit('did-frame-finish-load', {}, false, 1, 2);
-  assert.deepEqual(calls, [['frame', 1, 2]]);
+  // The chat that loaded is read for the conversation it shows.
+  assert.deepEqual(calls, [['frame', 1, 2], ['input', 't1']]);
   assert.deepEqual(scripts, [pageFocusScript(false), CHAT_FOCUS_GUARD]);
 });
 

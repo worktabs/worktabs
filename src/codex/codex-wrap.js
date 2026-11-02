@@ -56,7 +56,10 @@ function eventQueue(send) {
   function push(event) {
     const last = queue[queue.length - 1];
     if (event.threadId && last?.threadId === event.threadId && last.state === event.state && last.ended === event.ended
-      && last.reason === event.reason && last.restoreFailed === event.restoreFailed) queue[queue.length - 1] = event;
+      && last.reason === event.reason && last.restoreFailed === event.restoreFailed) {
+      // A folded thread load still tells the app to read the chat.
+      queue[queue.length - 1] = last.loaded ? { ...event, loaded: true } : event;
+    }
     else queue.push(event);
     if (!draining) draining = drain();
   }

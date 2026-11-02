@@ -7,12 +7,20 @@ const { CHAT_FOCUS_GUARD, chatAgent, isClaudeChatFrame, isCodexChatFrame, pageFo
 const { codexApprovalScript } = require('../codex/codex-approval');
 const { codexOnboardingScript } = require('../agents/agent-onboarding');
 
+// The keys that may switch the conversation in view: Enter (sending a prompt, picking from a
+// list), Escape, and shortcuts. Typing a prompt does not.
+function switchingKey(input) {
+  return input.type === 'keyDown' && (['Enter', 'Escape'].includes(input.key) || input.control || input.alt || input.meta);
+}
+
 // `makeView()`: a new WebContentsView. `frameOf(processId, routingId)`: webFrameMain.fromId.
 // `folderFromUrl(url)`: the folder a code-server address opens, or null. `hostKeys(event, input,
 // contents)`: the keys the app keeps (host-keys.js). `current(tab)`: whether the tab is still
 // open (TabLifecycle). `approvalMode()`: the Codex approval mode in the settings. `chatLoaded(tab,
-// agent)`: an agent chat's frame has loaded (chat-startup.js watches it start).
-function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExternal, hostKeys, current, approvalMode, changed, chatLoaded }) {
+// agent)`: an agent chat's frame has loaded (chat-startup.js watches it start). `input(tab)`: a
+// click or a key that may switch the conversation in view (SeenConversations reads it again).
+function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExternal, hostKeys, current, approvalMode, changed, chatLoaded,
+  input = (_tab) => {} }) {
   return function createTabView(tab) {
     const view = makeView();
     const contents = view.webContents;
@@ -28,7 +36,15 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
     });
     // VS Code asks for close confirmation through beforeunload; the tab bar decides instead.
     contents.on('will-prevent-unload', (event) => event.preventDefault());
-    contents.on('before-input-event', (event, input) => hostKeys(event, input, contents));
+    contents.on('before-input-event', (event, key) => {
+      hostKeys(event, key, contents);
+      if (switchingKey(key)) input(tab);
+    });
+    // Clicks in the chats come here too: they run in frames of their own, which 'input-event' does
+    // not see, but Electron reports each mouse event of the page's frames on its web contents.
+    contents.on('before-mouse-event', (_event, mouse) => {
+      if (mouse.type === 'mouseUp') input(tab);
+    });
     // The Claude Code chats, on sites of their own, are told whether the page has the focus.
     const tellClaudeChats = () => {
       try {
@@ -54,7 +70,10 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
         frame.executeJavaScript(codexApprovalScript(approvalMode())).catch(() => {});
       }
       const agent = frame && chatAgent(frame);
-      if (agent) chatLoaded(tab, agent);
+      if (agent) {
+        chatLoaded(tab, agent);
+        input(tab);
+      }
     });
     contents.on('render-process-gone', (_event, details) => {
       if (!current(tab)) return;
@@ -76,4 +95,4 @@ async function closeTabPage(contents, { settle = 500, sleep = (ms) => new Promis
   if (!contents.isDestroyed()) contents.close();
 }
 
-module.exports = { closeTabPage, createTabViews };
+module.exports = { closeTabPage, createTabViews, switchingKey };

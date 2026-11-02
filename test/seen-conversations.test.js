@@ -160,3 +160,83 @@ test('a result completed during a read invalidates that read', async (t) => {
   await pending;
   assert.equal(tracker.conversations('tab').find((c) => c.id === 'claude-one').unread, true);
 });
+
+test('the conversation in view is kept for the side bar, by its exact ID, while nothing is unread', async (t) => {
+  const { watch, state, tracker, tick } = watcher(t);
+  for (const id of ['claude-one', 'claude-two', 'codex:tab:one']) tracker.markSeen('tab', id);
+  assert.deepEqual(watch.shownIds('tab'), []);
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), ['claude-one']);
+  assert.deepEqual(watch.shownIds('other'), []);
+  assert.equal(state.changed, 1);
+  // Nothing unread and nothing loading: no more reads until something happens.
+  assert.equal(state.timers.length, 0);
+  // The same conversation again changes nothing.
+  watch.refresh();
+  await tick();
+  assert.equal(state.changed, 1);
+  // A chat that shows a conversation with no row yet marks none.
+  state.shown = [{ agent: 'claude', id: 'new' }];
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), []);
+  tracker.handle('tab', { hook_event_name: 'UserPromptSubmit', session_id: 'new' });
+  assert.deepEqual(watch.shownIds('tab'), ['new']);
+});
+
+test('input in the tab in front reads after a moment; input in another tab does not', async (t) => {
+  const { watch, state, tracker } = watcher(t);
+  for (const id of ['claude-one', 'claude-two', 'codex:tab:one']) tracker.markSeen('tab', id);
+  watch.soon('other');
+  assert.equal(state.timers.length, 0);
+  watch.soon('tab');
+  watch.soon('tab');
+  assert.deepEqual(state.timers.map((timer) => timer.delay), [300]);
+});
+
+test('a chat still loading is read again a few times, and marks nothing meanwhile', async (t) => {
+  const { watch, state, tracker, tick } = watcher(t);
+  for (const id of ['claude-one', 'claude-two', 'codex:tab:one']) tracker.markSeen('tab', id);
+  state.shown = [null];
+  watch.refresh();
+  for (let read = 0; read < 4; read++) {
+    await tick();
+    assert.deepEqual(watch.shownIds('tab'), []);
+  }
+  assert.equal(state.timers.length, 0, 'It gives up after a few reads');
+  state.shown = [null];
+  watch.refresh();
+  await tick();
+  state.shown = [{ agent: 'claude', id: 'claude-two' }];
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), ['claude-two']);
+  assert.equal(state.timers.length, 0, 'Identified: no more reads');
+});
+
+test('a failed read, a hidden panel, and another tab in front mark nothing', async (t) => {
+  const { watch, state, tick } = watcher(t);
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), ['claude-one']);
+  watch.read = async () => { throw new Error('gone'); };
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), []);
+  watch.read = async () => state.shown;
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), ['claude-one']);
+  state.shown = [];
+  watch.refresh();
+  await tick();
+  assert.deepEqual(watch.shownIds('tab'), []);
+  state.shown = [{ agent: 'claude', id: 'claude-one' }];
+  watch.refresh();
+  await tick();
+  const changed = state.changed;
+  state.tab = 'other';
+  watch.refresh();
+  assert.deepEqual(watch.shownIds('tab'), []);
+  assert.equal(state.changed, changed + 1);
+});

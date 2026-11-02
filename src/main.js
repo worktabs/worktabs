@@ -286,7 +286,7 @@ function placeholderUrl(title, detail = '') {
 const stateView = createViewState({
   lifecycle, sessions, tabAgent, update: () => updateCoordinator.state, appUpdate: () => selfUpdate.state, removing, cloning,
   repoUsed: () => tabStore.repoUsed(), agents: () => config.agents, usage, codexUsage,
-  theme: () => theme.current(), views: () => ({ win, sidebar, emptyView }),
+  shown: (tab) => seenConversations.shownIds(tab), theme: () => theme.current(), views: () => ({ win, sidebar, emptyView }),
 });
 const viewState = stateView.viewState;
 
@@ -364,7 +364,7 @@ const createTabView = createTabViews({
   folderFromUrl: (url) => codeServers.all().map((manager) => manager.folderFromUrl(url)).find(Boolean),
   openTab, openExternal: (url) => shell.openExternal(url), hostKeys: handleHostKeys,
   current: (tab) => lifecycle.current(tab), approvalMode: () => config.codexApprovalMode, changed: pushState,
-  chatLoaded: (tab, agent) => chatStartupWatch.watch(tab, agent),
+  chatLoaded: (tab, agent) => chatStartupWatch.watch(tab, agent), input: (tab) => seenConversations.soon(tab),
 });
 
 // An agent chat that does not start in a tab is told once for each version of its extension,
@@ -1115,7 +1115,7 @@ app.whenReady().then(async () => {
   hooks.writeSettings(hookSettings, WRAP_EXE);
   wireHooks({
     hooks, tabs, sessions, usage, codexUsage, usagePolling, pushState, onToolUsed,
-    helperRegistered: conversationOpening.helperRegistered, readTheme,
+    conversationStarted: (tab) => seenConversations.soon(tab), helperRegistered: conversationOpening.helperRegistered, readTheme,
     reveal: (target) => openInExplorer(target, { select: true }), exists: fs.existsSync,
   });
   // Time labels, reset expiry and stale Codex snapshots must update even without a response.
