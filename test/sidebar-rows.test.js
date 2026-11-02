@@ -69,6 +69,29 @@ test('conversation rows keep provider labels and prevent archive clicks from rev
   assert.deepEqual(calls, [['archiveSession', 'tab', 'thread']]);
 });
 
+test('the conversation a chat in view shows is the row marked, and its worktree row keeps only its line', () => {
+  const { rows } = setup();
+  const conversation = { id: 'one', title: 'Review', state: 'idle', since: 0 };
+  const shown = rows.renderConversation({ id: 'tab' }, { ...conversation, shown: true });
+  assert.equal(shown.classList.contains('active'), true);
+  assert.equal(shown.getAttribute('aria-selected'), 'true');
+  const other = rows.renderConversation({ id: 'tab' }, { ...conversation, id: 'two' });
+  assert.equal(other.classList.contains('active'), false);
+  assert.equal(other.getAttribute('aria-selected'), 'false');
+  const folder = { path: 'C:\\repo-task', repo: 'C:\\repo', name: 'task', branch: 'task' };
+  const tab = { id: 'tab', active: true, agent: 'idle', conversations: [{ ...conversation, shown: true }] };
+  const holding = rows.renderFolder({ ...folder, tab });
+  assert.equal(holding.classList.contains('active'), true);
+  assert.equal(holding.classList.contains('holds-shown'), true);
+  assert.equal(holding.getAttribute('aria-selected'), 'true');
+  // Nothing identified in view: the worktree row is marked as before.
+  const alone = rows.renderFolder({ ...folder, tab: { ...tab, conversations: [conversation] } });
+  assert.equal(alone.classList.contains('holds-shown'), false);
+  assert.equal(alone.classList.contains('active'), true);
+  const behind = rows.renderFolder({ ...folder, tab: { ...tab, active: false } });
+  assert.equal(behind.classList.contains('holds-shown'), false);
+});
+
 test('closed worktree actions use the represented folder and retain exact merged-head removal readiness', () => {
   const pull = { state: 'merged', number: 12, title: 'Change', head: 'same' };
   const { rows, calls } = setup({ select: { pullOf: () => pull } });

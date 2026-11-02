@@ -21,16 +21,24 @@ function localHookInput(folder, input) {
 
 const live = (tab) => Boolean(tab) && ['starting', 'running'].includes(tab.server);
 
+// Claude's hooks that come as its chat shows a new, resumed, or sent-to conversation.
+const STARTING_HOOKS = new Set(['SessionStart', 'UserPromptSubmit']);
+
+// `conversationStarted(tab)`: a conversation was started, opened, or sent to in the tab, so the
+// chat in view may show another one (SeenConversations reads it again).
 function wireHooks({ hooks, tabs, sessions, usage, codexUsage, usagePolling, pushState, onToolUsed,
-  helperRegistered, readTheme, reveal, exists }) {
+  conversationStarted = (_tab) => {}, helperRegistered, readTheme, reveal, exists }) {
   hooks.on('hook', (tabId, input, procId) => {
     sessions.handle(tabId, localHookInput(tabs.get(tabId)?.folder, input), procId);
     onToolUsed(tabId, input);
+    const tab = tabs.get(tabId);
+    if (tab && STARTING_HOOKS.has(input.hook_event_name)) conversationStarted(tab);
   });
   hooks.on('codex', (tabId, input, procId) => {
     const tab = tabs.get(tabId);
     if (!live(tab)) return;
     sessions.handleCodex(tabId, { ...input, cwd: localPath(tab.folder, input.cwd) }, procId);
+    if (input.loaded) conversationStarted(tab);
   });
   hooks.on('usage', (input) => {
     if (usage.take(input)) pushState();

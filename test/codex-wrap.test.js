@@ -37,6 +37,19 @@ test('the Codex event queue keeps transitions ordered without holding up the pip
   assert.deepEqual(sent.filter((e) => e.type).map((e) => e.type), ['codex-account', 'codex-usage']);
 });
 
+test('a folded thread load still tells the app to read the chat', async () => {
+  const sent = [];
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const queue = eventQueue(async (event) => { await blocked; sent.push(event); });
+  queue.push({ threadId: 'busy', state: 'working' });
+  queue.push({ threadId: 't', state: 'idle', loaded: true });
+  queue.push({ threadId: 't', state: 'idle', title: 'named' });
+  release();
+  await queue.flush();
+  assert.deepEqual(sent.at(-1), { threadId: 't', state: 'idle', title: 'named', loaded: true });
+});
+
 test('the Codex event queue keeps closure, deletion, restore failures and quota events distinct', async () => {
   const sent = [];
   let release;

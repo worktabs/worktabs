@@ -329,14 +329,15 @@ class CodexObserver {
         thread.state = this.waiting(thread) ? 'waiting' : state;
       }
     }
-    this.emit(thread);
+    // A thread started or opened in the chat: the app reads which one the chat shows.
+    this.emit(thread, { loaded: true });
   }
 
-  emit(thread) {
+  emit(thread, extra = {}) {
     const { threadId, turnId, state, conversation, title, prompt, promptSource, cwd, ephemeral,
       subagent, parentThreadId, agentNickname, agentRole, agentPath } = thread;
     this.onEvent({ threadId, turnId, state, conversation, title, prompt, promptSource, cwd, ephemeral,
-      ...(subagent ? { subagent, parentThreadId, agentNickname, agentRole, agentPath } : {}) });
+      ...(subagent ? { subagent, parentThreadId, agentNickname, agentRole, agentPath } : {}), ...extra });
   }
 }
 

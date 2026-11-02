@@ -62,12 +62,16 @@ const VISIBLE_CHAT_FRAMES_SCRIPT = `(() => [...document.querySelectorAll('iframe
   return box.width > 0 && box.height > 0 && box.right > 0 && box.bottom > 0 && box.left < innerWidth && box.top < innerHeight;
 }).map((frame) => frame.src))()`;
 
-// Re-read while unread results remain, including switches inside an already loaded panel.
-// A focus or tab change invalidates pending reads even if the user switches back before they
-// finish. Reads never overlap, and failures retain unread marks and retry on the next tick.
+// Reads which conversations the chats in view of the tab in front show: for the side bar, which
+// marks their rows, and to clear their unread results. A read goes on events that can change them
+// (a tab switch, the window's focus, a hook, input in the tab: `refresh` and `soon`), then every
+// `interval` while unread results remain, or while a chat in view could not be identified yet (it
+// is loading), at most `retries` times. Nothing is read while nothing happens. A focus or tab
+// change invalidates pending reads even if the user switches back before they finish. Reads never
+// overlap; failures keep unread marks and the side bar marks no conversation.
 class SeenConversations {
   constructor({ activeTab, focused, hasUnread, read, conversations, markSeen, changed,
-    interval = 1500, setTimer = setTimeout, clearTimer = clearTimeout }) {
+    interval = 1500, settle = 300, retries = 4, setTimer = setTimeout, clearTimer = clearTimeout }) {
     this.activeTab = activeTab;
     this.focused = focused;
     this.hasUnread = hasUnread;
@@ -76,45 +80,85 @@ class SeenConversations {
     this.markSeen = markSeen;
     this.changed = changed;
     this.interval = interval;
+    this.settle = settle;
+    this.retries = retries;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.generation = 0;
     this.timer = null;
     this.busy = false;
+    this.wanted = false;
+    this.loading = 0;
+    // What the last read found in the tab in front: { tab, views } (see shownConversations in
+    // chat-frames.js).
+    this.shown = { tab: null, views: [] };
   }
 
   refresh() {
+    this.request(0);
+  }
+
+  // Something happened in `tab` that may switch the conversation in view (a click, a key, a hook):
+  // read once the chat has had a moment to show it.
+  soon(tab) {
+    if (tab === this.activeTab()) this.request(this.settle);
+  }
+
+  request(delay) {
     this.generation++;
+    this.wanted = true;
+    this.loading = this.retries;
     this.clearTimer(this.timer);
     this.timer = null;
-    this.schedule(0);
+    // A tab that is no longer in front shows nothing in the window.
+    if (this.shown.tab !== this.activeTab() && this.setShown(null, [])) this.changed();
+    this.schedule(delay);
   }
 
   schedule(delay) {
     const tab = this.activeTab();
-    if (this.busy || this.timer !== null || !tab || !this.focused() || !this.hasUnread(tab)) return;
+    if (this.busy || this.timer !== null || !tab || !this.focused()) return;
+    if (!this.wanted && this.loading <= 0 && !this.hasUnread(tab)) return;
     this.timer = this.setTimer(() => this.check(), delay);
   }
 
   async check() {
     this.timer = null;
     const tab = this.activeTab(), generation = this.generation;
-    if (!tab || !this.focused() || !this.hasUnread(tab)) return;
+    if (!tab || !this.focused()) return;
+    this.wanted = false;
     this.busy = true;
     try {
-      const shown = await this.read(tab);
+      let shown;
+      try {
+        shown = await this.read(tab);
+      } catch {
+        // A reloading or unsupported panel cannot prove that any conversation is in view.
+        shown = null;
+      }
       if (generation !== this.generation || tab !== this.activeTab() || !this.focused()) return;
-      let changed = false;
+      const views = Array.isArray(shown) ? shown : [];
+      this.loading = views.some((view) => !view) ? this.loading - 1 : 0;
+      let changed = this.setShown(tab, views.filter(Boolean));
       for (const id of seenConversationIds(this.conversations(tab), shown)) {
         if (this.markSeen(tab, id)) changed = true;
       }
       if (changed) this.changed();
-    } catch {
-      // A reloading or unsupported panel cannot prove that any conversation was seen.
     } finally {
       this.busy = false;
       this.schedule(generation === this.generation ? this.interval : 0);
     }
+  }
+
+  setShown(tab, views) {
+    const same = JSON.stringify(views) === JSON.stringify(this.shown.views) && (!views.length || tab === this.shown.tab);
+    this.shown = { tab, views };
+    return !same;
+  }
+
+  // The IDs of `tab`'s conversations that a chat in view shows, by the exact ID only.
+  shownIds(tab) {
+    return tab && tab === this.shown.tab ? seenConversationIds(this.conversations(tab), this.shown.views) : [];
   }
 }
 

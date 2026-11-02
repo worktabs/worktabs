@@ -489,6 +489,19 @@ main {
   outline-offset: -1px;
 }
 
+/* The tab in front, while one of its conversation rows is marked as the one a chat shows: only
+   the line at its left, so that one row stands out. */
+.row.active.holds-shown {
+  background: none;
+  color: inherit;
+  outline: none;
+}
+
+.row.active.holds-shown:hover {
+  background: var(--row-hover);
+  outline: 1px dashed var(--outline);
+}
+
 .row.attention {
   box-shadow: inset 3px 0 0 var(--waiting);
 }

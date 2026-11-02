@@ -111,7 +111,10 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     const badge = tab ? badgeOf(tab) : 'closed';
     const name = folderName(folder);
     const branch = branchOf(folder);
-    const row = el('div', `row worktree${tab ? ' open' : ''}${tab && tab.active ? ' active' : ''}${badge === 'waiting' ? ' attention' : ''}`);
+    // While a chat in view shows one of its conversations, that row is the one marked, and the
+    // worktree's row keeps only the line at its left.
+    const active = tab && tab.active ? ((tab.conversations || []).some((c) => c.shown) ? ' active holds-shown' : ' active') : '';
+    const row = el('div', `row worktree${tab ? ' open' : ''}${active}${badge === 'waiting' ? ' attention' : ''}`);
     row.setAttribute('role', 'treeitem');
     row.dataset.folder = folder.path;
     row.title = [folder.path, branch && t('Branch: {branch}', { branch }), `${LABELS[badge]}${tab && tab.error ? `: ${tab.error}` : ''}`].filter(Boolean).join('\n');
@@ -282,7 +285,7 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     const name = conversationName(conversation);
     const moved = movedTo(tab, conversation);
     const since = sinceText(conversation.state, conversation.since, now);
-    const row = el('div', `row conversation${badge === 'waiting' ? ' attention' : ''}`);
+    const row = el('div', `row conversation${conversation.shown ? ' active' : ''}${badge === 'waiting' ? ' attention' : ''}`);
     const provider = AGENT_LABELS[conversation.agent === 'codex' ? 'codex' : 'claude'];
     row.setAttribute('role', 'treeitem');
     if (depth) row.style.setProperty('--depth', String(depth));
@@ -298,6 +301,8 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
       .filter(Boolean)
       .join('\n');
     row.setAttribute('aria-label', row.title);
+    // The conversation a chat in view shows (SeenConversations in the main process).
+    row.setAttribute('aria-selected', String(Boolean(conversation.shown)));
     row.append(el('span', `dot ${badge}`), agentIcon(conversation.agent));
     // A short tag, so the name keeps the room; the tooltip spells it out.
     if (conversation.subagent && name !== t('Subagent')) row.append(el('span', 'tag', t('Sub')));

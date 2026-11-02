@@ -28,7 +28,7 @@ function setup() {
     sessions: { handle: record('handle'), handleCodex: record('codex') },
     usage: { take: () => true }, codexUsage: { take: () => false },
     usagePolling: { refresh: record('poll') }, pushState: record('push'), onToolUsed: record('tool'),
-    helperRegistered: record('helper'), readTheme: (tab) => calls.push(['theme', tab.id]),
+    conversationStarted: (tab) => calls.push(['started', tab.id]), helperRegistered: record('helper'), readTheme: (tab) => calls.push(['theme', tab.id]),
     reveal: record('reveal'), exists: (target) => target !== '/gone',
   });
   return { hooks, calls, tabs };
@@ -42,6 +42,15 @@ test('hooks reach the conversations, with Linux paths made local', () => {
   hooks.emit('codex', 'wsl', { cwd: '/home/me/app', type: 'turn' }, 8);
   hooks.emit('codex', 'stopped', { cwd: '/src/old' }, 9);
   assert.deepEqual(calls, [['codex', 'wsl', { cwd: WSL, type: 'turn' }, 8]]);
+});
+
+test('a conversation started, resumed, or sent to has its tab read the chat in view', () => {
+  const { hooks, calls } = setup();
+  for (const hook_event_name of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Stop']) hooks.emit('hook', 'local', { hook_event_name }, 1);
+  hooks.emit('codex', 'local', { threadId: 't', state: 'idle', loaded: true }, 2);
+  hooks.emit('codex', 'local', { threadId: 't', state: 'working' }, 2);
+  hooks.emit('codex', 'stopped', { threadId: 't', state: 'idle', loaded: true }, 3);
+  assert.deepEqual(calls.filter(([name]) => name === 'started'), [['started', 'local'], ['started', 'local'], ['started', 'local']]);
 });
 
 test('Codex reports count only from a tab that runs', () => {

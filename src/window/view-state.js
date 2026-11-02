@@ -18,15 +18,17 @@ function windowTitle(counts) {
 // `appUpdate()` that of Worktabs itself.
 // `removing`, `cloning`: Sets of worktrees being removed and repositories being cloned.
 // `repoUsed()`: tab-store.js's. `agents()`: the agents turned on. `usage`, `codexUsage`: their
-// trackers. `theme()`: the colors of the tab in front. `views()`: { win, sidebar, emptyView },
+// trackers. `shown(tab)`: the IDs of the tab's conversations a chat in view shows
+// (SeenConversations). `theme()`: the colors of the tab in front. `views()`: { win, sidebar, emptyView },
 // once the window is made. `schedule`: when a burst of pushes goes (coalesce in util.js).
 function createViewState({ lifecycle, sessions, tabAgent, update, appUpdate = () => ({ status: 'none' }), removing, cloning, repoUsed, agents,
-  usage, codexUsage, theme, views, schedule = setImmediate }) {
+  usage, codexUsage, shown = (_tab) => [], theme, views, schedule = setImmediate }) {
   function viewState() {
     const enabled = agents();
     return {
       tabs: lifecycle.order.map((id) => {
         const tab = lifecycle.tabs.get(id);
+        const inView = shown(tab);
         return {
           id,
           name: tab.name,
@@ -41,7 +43,9 @@ function createViewState({ lifecycle, sessions, tabAgent, update, appUpdate = ()
           agent: sessions.tabState(id),
           provider: tabAgent(tab),
           unread: sessions.hasUnread(id),
-          conversations: sessions.conversations(id).map((conversation) => ({ ...conversation, agent: conversation.agent || 'claude' })),
+          conversations: sessions.conversations(id).map((conversation) => ({
+            ...conversation, agent: conversation.agent || 'claude', shown: inView.includes(conversation.id),
+          })),
           active: id === lifecycle.activeId,
         };
       }),

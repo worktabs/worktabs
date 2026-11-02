@@ -28,7 +28,7 @@ function setup({ agents = ['claude'], win = true } = {}) {
     lifecycle, sessions, tabAgent: (t) => t.provider, update: () => ({ status: 'none' }),
     removing: new Set(['/src/old']), cloning: new Set(), repoUsed: () => ({ '/src/app': 1 }), agents: () => agents,
     usage: { view: () => ['five-hour'], providerView: () => ({ provider: 'claude' }) },
-    codexUsage: { view: () => ({ provider: 'codex' }) },
+    codexUsage: { view: () => ({ provider: 'codex' }) }, shown: (t) => (t === tab ? ['s2'] : []),
     theme: () => null, views: () => views, schedule: (fn) => { scheduled = fn; },
   });
   return { state, sent, run: () => { const fn = scheduled; scheduled = null; fn(); }, pending: () => Boolean(scheduled) };
@@ -39,7 +39,7 @@ test('viewState describes each tab and the usage of the agents turned on', () =>
   assert.deepEqual(view.tabs[0], {
     id: 't1', name: 'app', branch: 'main', repo: '/src/app', folder: '/src/app', server: 'running', port: 5001, error: null,
     agent: 'working', provider: 'codex', unread: true,
-    conversations: [{ id: 's1', agent: 'claude' }, { id: 's2', agent: 'codex' }], active: true,
+    conversations: [{ id: 's1', agent: 'claude', shown: false }, { id: 's2', agent: 'codex', shown: true }], active: true,
   });
   assert.deepEqual(view.removing, ['/src/old']);
   assert.deepEqual(view.usage, ['five-hour']);
