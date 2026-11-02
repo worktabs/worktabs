@@ -1,4 +1,5 @@
 const { webviewReactScript } = require('./webview-react');
+const { shownSubagent } = require('./seen-conversations');
 const { waitInPage } = require('./page-wait');
 
 // How long a check waits in the chat's page for the thread, before the app asks again.
@@ -6,10 +7,13 @@ const PAGE_WAIT = 5000;
 
 // A successful URI dispatch is not proof that the requested chat rendered. Read the
 // mounted local thread context, including busy composers whose permission control is disabled.
-function visibleCodexThread(document, propsOf) {
+// A subagent opened in the subagents panel is the thread shown, though its parent's composer stays.
+function visibleCodexThread(document, propsOf, mountedOf = () => []) {
   try {
-    const pickers = [...document.querySelectorAll('[data-composer-navigation-target="permissions"]')]
-      .filter((node) => node.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }));
+    const all = [...document.querySelectorAll('[data-composer-navigation-target="permissions"]')];
+    const subagent = all.length ? shownSubagent(all[0], mountedOf) : null;
+    if (subagent) return subagent;
+    const pickers = all.filter((node) => node.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }));
     if (pickers.length !== 1) return null;
     const context = propsOf(pickers[0]).find((props) => props && Object.hasOwn(props, 'conversationId') && Object.hasOwn(props, 'hostId'));
     return context?.hostId === 'local' && typeof context.conversationId === 'string' ? context.conversationId : null;
@@ -20,7 +24,8 @@ function visibleCodexThread(document, propsOf) {
 // the thread it shows then (visibleCodexThread).
 function codexNavigationScript(threadId, wait = PAGE_WAIT) {
   return webviewReactScript(`const propsOf = (node) => { const found = reactAncestors(node); return found.available ? found.props : []; };
-    return (${waitInPage})(() => (${visibleCodexThread})(document, propsOf), (shown) => shown === ${JSON.stringify(threadId)}, ${wait}, window);`);
+    const shownSubagent = ${shownSubagent};
+    return (${waitInPage})(() => (${visibleCodexThread})(document, propsOf, reactMountedProps), (shown) => shown === ${JSON.stringify(threadId)}, ${wait}, window);`);
 }
 
 // Fresh official webviews can take several seconds to load after the helper's URI ack. `read()`:

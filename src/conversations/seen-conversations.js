@@ -1,4 +1,4 @@
-const { reactAncestors, webviewReactScript } = require('./webview-react');
+const { reactAncestors, reactMountedProps, webviewReactScript } = require('./webview-react');
 
 // A visible agent alone does not identify a conversation. Only a current webview snapshot
 // with an exact conversation ID can clear a result; titles and last-opened IDs are not proof.
@@ -17,9 +17,22 @@ function composerProps(element) {
   return found.available ? found.props : [];
 }
 
-function shownConversation(agent, document, propsOf) {
+// The subagent that Codex's subagents panel shows beside its parent's thread, whose composer stays
+// in view. Null unless one visible panel has one selected.
+function shownSubagent(element, mountedOf) {
+  const panels = mountedOf(element, (props) => Object.hasOwn(props, 'parentConversationId') && Object.hasOwn(props, 'requestedConversationId'))
+    .filter((panel) => panel.visible && typeof panel.props.requestedConversationId === 'string' && panel.props.requestedConversationId);
+  return panels.length === 1 ? panels[0].props.requestedConversationId : null;
+}
+
+function shownConversation(agent, document, propsOf, mountedOf = () => []) {
   const selector = agent === 'codex' ? '[data-composer-navigation-target="permissions"]' : '[aria-label="Message input"]';
-  const inputs = [...document.querySelectorAll(selector)].filter((element) =>
+  const all = [...document.querySelectorAll(selector)];
+  if (agent === 'codex' && all.length) {
+    const subagent = shownSubagent(all[0], mountedOf);
+    if (subagent) return { agent, id: subagent };
+  }
+  const inputs = all.filter((element) =>
     element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }));
   if (inputs.length !== 1) return null;
   const props = propsOf(inputs[0]);
@@ -44,14 +57,15 @@ function conversationProbe(agent, document) {
     const snapshot = shownConversation(agent, document, (element) => {
       discovery = reactAncestors(element);
       return discovery.available ? discovery.props : [];
-    });
+    }, reactMountedProps);
     return snapshot ? { available: true, snapshot }
       : { available: false, reason: discovery && !discovery.available ? discovery.reason : 'unknown-conversation' };
   } catch { return { available: false, reason: 'unreadable-probe' }; }
 }
 
 function shownConversationScript(agent) {
-  return webviewReactScript(`const composerProps = ${composerProps}; return (${shownConversation})(${JSON.stringify(agent)}, document, composerProps);`);
+  return webviewReactScript(`const composerProps = ${composerProps}; const shownSubagent = ${shownSubagent};
+    return (${shownConversation})(${JSON.stringify(agent)}, document, composerProps, reactMountedProps);`);
 }
 
 // VS Code moves webviews outside their view containers. The iframe's own visibility is needed
@@ -162,4 +176,4 @@ class SeenConversations {
   }
 }
 
-module.exports = { SeenConversations, seenConversationIds, composerProps, conversationProbe, shownConversation, shownConversationScript, VISIBLE_CHAT_FRAMES_SCRIPT };
+module.exports = { SeenConversations, seenConversationIds, composerProps, conversationProbe, shownConversation, shownConversationScript, shownSubagent, VISIBLE_CHAT_FRAMES_SCRIPT };

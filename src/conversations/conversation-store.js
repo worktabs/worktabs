@@ -336,12 +336,27 @@ class ConversationStore extends EventEmitter {
   // goes on, as the extension's own archive leaves it; it is back on the list once it works or
   // waits again (see handle). One that works or waits now stays: the list is there to watch
   // those. Returns true when it was taken off.
+  // A Codex conversation's subagents (and theirs) go with it, whatever state they show: a child
+  // whose completion never arrived would show as working for good, with no way to archive it. They
+  // are set idle, so that a turn they start later brings them back, as for any archived row.
   archive(tabId, sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session || session.tabId !== tabId || session.archived) return false;
     if (session.state === 'working' || session.state === 'waiting') return false;
     session.archived = true;
     session.unread = false;
+    const parents = new Set(session.threadId ? [session.threadId] : []);
+    for (let added = true; added;) {
+      added = false;
+      for (const [id, child] of this.sessions) {
+        if (child.tabId !== tabId || !child.subagent || child.archived || !parents.has(child.parentThreadId)) continue;
+        child.archived = true;
+        child.unread = false;
+        if (child.state === 'working' || child.state === 'waiting') this.setState(id, child, 'idle');
+        if (child.threadId) parents.add(child.threadId);
+        added = true;
+      }
+    }
     return true;
   }
 
