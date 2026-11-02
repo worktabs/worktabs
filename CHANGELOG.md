@@ -2,6 +2,12 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-11-02
+
+### Bug fixes
+- highlight a Codex subagent's row while the chat shows it, and archive subagents with their parent ([#40](https://github.com/worktabs/worktabs/pull/40))
+- let updates go on without closing tabs, when the Codex extension is installed but agents leaves Codex out ([#38](https://github.com/worktabs/worktabs/pull/38))
+
 ## [0.9.0] - 2026-11-02
 
 ### Features
