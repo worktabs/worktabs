@@ -2,6 +2,11 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-11-02
+
+### Features
+- highlight the conversation row that a chat in view shows, not only its worktree row ([#36](https://github.com/worktabs/worktabs/pull/36))
+
 ## [0.8.0] - 2026-10-24
 
 ### Features
