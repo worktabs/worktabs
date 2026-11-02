@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { mountReact } = require('./fixtures/react-tree');
+const { reactMountedProps } = require('../src/conversations/webview-react');
+const { visibleCodexThread } = require('../src/conversations/conversation-navigation');
 const { ConversationStore } = require('../src/conversations/conversation-store');
 const { SeenConversations, seenConversationIds, composerProps, shownConversation,
   shownConversationScript, VISIBLE_CHAT_FRAMES_SCRIPT } = require('../src/conversations/seen-conversations');
@@ -239,4 +241,34 @@ test('a failed read, a hidden panel, and another tab in front mark nothing', asy
   watch.refresh();
   assert.deepEqual(watch.shownIds('tab'), []);
   assert.equal(state.changed, changed + 1);
+});
+
+// A Codex composer whose tree also mounts the subagents panel beside it.
+function panelTree(requestedConversationId, { visible = true, parent = 'parent' } = {}) {
+  const composer = { checkVisibility: () => true };
+  const panelNode = { checkVisibility: () => visible };
+  const rootState = {};
+  const root = { stateNode: rootState };
+  const thread = { memoizedProps: { triggerButton: {}, conversationId: parent, hostId: 'local' }, return: root };
+  const leaf = { stateNode: composer, return: thread };
+  const panel = { memoizedProps: { hostId: 'local', parentConversationId: parent, requestedConversationId }, return: root };
+  const panelHost = { stateNode: panelNode, return: panel };
+  root.child = thread; thread.child = leaf; thread.sibling = panel; panel.child = panelHost;
+  rootState.current = root;
+  composer.__reactFiber$fixture = leaf;
+  return { querySelectorAll: () => [composer] };
+}
+
+test('a subagent open in the Codex subagents panel is the conversation shown, not its parent', () => {
+  for (const script of [false, true]) {
+    const read = (document) => (script
+      ? new Function('document', `return ${shownConversationScript('codex')}`)(document)
+      : shownConversation('codex', document, composerProps, reactMountedProps));
+    assert.deepEqual(read(panelTree('child')), { agent: 'codex', id: 'child' });
+    assert.deepEqual(read(panelTree(null)), { agent: 'codex', id: 'parent' });
+    assert.deepEqual(read(panelTree('child', { visible: false })), { agent: 'codex', id: 'parent' });
+  }
+  // A subagent row click is confirmed by the same panel.
+  assert.equal(visibleCodexThread(panelTree('child'), composerProps, reactMountedProps), 'child');
+  assert.equal(visibleCodexThread(panelTree(null), composerProps, reactMountedProps), 'parent');
 });

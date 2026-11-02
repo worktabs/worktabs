@@ -33,6 +33,35 @@ function reactAncestors(element, { maxDepth = 512, maxNodes = 10000 } = {}) {
   } catch { return unavailable('unreadable-tree'); }
 }
 
+// The props of mounted components that `match`, in the tree `element` is mounted in, each with
+// whether the first element it renders is visible. Bounded like reactAncestors.
+function reactMountedProps(element, match, { maxNodes = 20000 } = {}) {
+  try {
+    const key = element && Object.keys(element).find((name) => name.startsWith('__reactFiber$'));
+    let root = key && element[key];
+    for (let depth = 0; root?.return; depth++) {
+      if (depth >= 512) return [];
+      root = root.return;
+    }
+    const stack = [root?.stateNode?.current]; const seen = new Set(); const found = [];
+    while (stack.length) {
+      const fiber = stack.pop();
+      if (!fiber || typeof fiber !== 'object' || seen.has(fiber)) continue;
+      if (seen.size >= maxNodes) return [];
+      seen.add(fiber);
+      if (fiber.memoizedProps && typeof fiber.memoizedProps === 'object' && match(fiber.memoizedProps)) {
+        let host = fiber;
+        for (let steps = 0; host && !host.stateNode?.checkVisibility && steps < 64; steps++) host = host.child;
+        const visible = Boolean(host?.stateNode?.checkVisibility?.({ checkVisibilityCSS: true, checkOpacity: true }));
+        found.push({ props: fiber.memoizedProps, visible });
+      }
+      if (fiber.sibling) stack.push(fiber.sibling);
+      if (fiber.child) stack.push(fiber.child);
+    }
+    return found;
+  } catch { return []; }
+}
+
 function reactElementProps(value, { maxDepth = 20, maxNodes = 10000, includeSelected = true } = {}) {
   try {
     const props = []; const stack = [{ value, depth: 0 }]; const seen = new Set();
@@ -57,6 +86,6 @@ function reactElementProps(value, { maxDepth = 20, maxNodes = 10000, includeSele
 }
 
 function webviewReactScript(body) {
-  return `(() => { const reactAncestors = ${reactAncestors}; const reactElementProps = ${reactElementProps}; ${body} })()`;
+  return `(() => { const reactAncestors = ${reactAncestors}; const reactMountedProps = ${reactMountedProps}; const reactElementProps = ${reactElementProps}; ${body} })()`;
 }
-module.exports = { reactAncestors, reactElementProps, webviewReactScript };
+module.exports = { reactAncestors, reactMountedProps, reactElementProps, webviewReactScript };

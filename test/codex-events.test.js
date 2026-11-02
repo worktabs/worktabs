@@ -646,3 +646,20 @@ test('A resume preview cannot overwrite a last prompt restored from Worktabs his
   send('item/started', { item: { type: 'userMessage', content: [{ type: 'text', text: 'Next task' }] } });
   assert.equal(tracker.conversations('tab')[0].prompt, 'Next task');
 });
+
+test('archiving a Codex conversation takes its subagents with it, even ones left working', () => {
+  const tracker = new ConversationStore();
+  const codex = (threadId, state, extra = {}) => tracker.handleCodex('tab', { threadId, state, conversation: true, ...extra }, 'proc');
+  codex('parent', 'done');
+  codex('child', 'working', { subagent: true, parentThreadId: 'parent' });
+  codex('grandchild', 'waiting', { subagent: true, parentThreadId: 'child' });
+  codex('other', 'working', { subagent: true, parentThreadId: 'elsewhere' });
+  tracker.handleCodex('tab2', { threadId: 'child2', state: 'working', conversation: true, subagent: true, parentThreadId: 'parent' }, 'proc2');
+  assert.equal(tracker.archive('tab', 'codex:tab:parent'), true);
+  assert.deepEqual(tracker.conversations('tab').map((c) => c.threadId), ['other']);
+  assert.equal(tracker.tabState('tab'), 'working');
+  assert.equal(tracker.conversations('tab2').length, 1);
+  // A turn the subagent starts later brings it back.
+  codex('child', 'working', { subagent: true, parentThreadId: 'parent' });
+  assert.deepEqual(tracker.conversations('tab').map((c) => c.threadId), ['child', 'other']);
+});
