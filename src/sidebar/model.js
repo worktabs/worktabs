@@ -60,6 +60,18 @@ const sidebarModel = (() => {
     };
   }
 
+  // The groups expanded once the open tabs changed, from the groups that held an open tab before
+  // (null before the tabs were first known) and those that hold one now. A group expands when a
+  // tab first opens in it, so collapsing it by hand sticks while it is open, and collapses when its
+  // last tab closes, so the other repositories show just their own rows. The first time, the groups
+  // without a tab collapse too: the last run may have left them expanded.
+  function followOpenTabs(expanded, before, now) {
+    const next = new Set(expanded);
+    for (const key of expanded) if (!now.has(key) && (!before || before.has(key))) next.delete(key);
+    for (const key of now) if (!before || !before.has(key)) next.add(key);
+    return next;
+  }
+
   function expandedRepos(state, paths = null) {
     return groups(state).filter((group) => group.git && state.expanded.has(group.key) && (!paths || paths.some((p) => keyOf(p) === group.key)));
   }
@@ -175,6 +187,6 @@ const sidebarModel = (() => {
   function mostUrgent(tabs) {
     return tabs.map(badgeOf).sort((a, b) => URGENCY.indexOf(a) - URGENCY.indexOf(b))[0];
   }
-  return { tabForFolder, matches, groupKeyOf, groups, sections, expandedRepos, foldersOf, ownerExpanded, shownOwners, shownFolder, shownGroups, badgeOf, conversationBadge, conversationName, nestConversations, shortName, folderName, branchOf, mostUrgent, keyOf, basename, dirname, pathKey, isInside };
+  return { tabForFolder, matches, groupKeyOf, groups, sections, followOpenTabs, expandedRepos, foldersOf, ownerExpanded, shownOwners, shownFolder, shownGroups, badgeOf, conversationBadge, conversationName, nestConversations, shortName, folderName, branchOf, mostUrgent, keyOf, basename, dirname, pathKey, isInside };
 })();
 if (typeof module === 'object') module.exports = sidebarModel;

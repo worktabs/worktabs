@@ -99,9 +99,10 @@ const state = {
   ownersToggled: new Set(loadStored('ownersToggled', [])),
   // Repositories of the accounts being cloned (their keys).
   cloning: new Set(),
-  // Groups (repositories, and OTHER_KEY) that held an open tab at the last update; a group is
-  // expanded automatically only when a tab first opens in it, so collapsing it by hand sticks.
-  openRepos: new Set(),
+  // Groups (repositories, and OTHER_KEY) that held an open tab at the last update, or null until
+  // the tabs are known. A group expands when a tab first opens in it and collapses when its last
+  // tab closes (followOpenTabs in model.js).
+  openRepos: /** @type {Set<string> | null} */ (null),
   filter: '',
   // Updates of code-server and the extensions: { status, items, detail, busy } (see main.js).
   update: null,
@@ -611,12 +612,14 @@ function renderNow() {
   githubBar.place();
 }
 
-// Expands (and reads) a group when a tab first opens in it.
-function expandGroupsOfNewTabs() {
+// Expands (and reads) a group when a tab first opens in it, and collapses it when its last tab
+// closes. Before the tabs are known every group would look closed, so it waits for them.
+function followOpenTabs() {
+  if (!state.tabsKnown) return;
   const open = new Set(state.tabs.map(groupKeyOf).filter((key) => key !== undefined));
+  state.expanded = sidebarModel.followOpenTabs(state.expanded, state.openRepos, open);
   for (const key of open) {
-    if (state.openRepos.has(key)) continue;
-    state.expanded.add(key);
+    if (state.openRepos && state.openRepos.has(key)) continue;
     const group = groups().find((g) => g.key === key);
     if (group && group.git) loadWorktrees(group);
   }
@@ -679,7 +682,7 @@ const applyTheme = createPageTheme({ document, window });
 // and the list is read again when the window comes to the front or a Claude turn ends.
 window.host.onUpdate((tabState) => {
   takeTabState(tabState);
-  expandGroupsOfNewTabs();
+  followOpenTabs();
   render();
 });
 
@@ -765,13 +768,13 @@ for (const name of ['open', 'other', 'uncloned']) document.getElementById(`${nam
 window.host.getState().then((tabState) => {
   if (state.tabsKnown) return;
   takeTabState(tabState);
-  expandGroupsOfNewTabs();
+  followOpenTabs();
   render();
 });
 // The list of the last run comes at once; the main process reads it again meanwhile.
 window.host.getRepos().then((saved) => {
   state.savedWorktrees = new Map(Object.entries(saved.worktrees || {}));
   takeRepoMessage(saved);
-  expandGroupsOfNewTabs();
+  followOpenTabs();
   render();
 });

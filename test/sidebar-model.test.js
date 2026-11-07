@@ -27,6 +27,23 @@ test('sections order open groups by name and other groups by recency without mut
   assert.deepEqual(repos.map((r) => r.name), ['z', 'b', 'a', 'c']);
 });
 
+test('groups expand when a tab first opens in them and collapse when their last tab closes', () => {
+  const keys = (set) => [...set].sort();
+  // The first time, the groups without a tab collapse, even those the last run left expanded.
+  let expanded = model.followOpenTabs(new Set(['/old', '/open']), null, new Set(['/open', '/new']));
+  assert.deepEqual(keys(expanded), ['/new', '/open']);
+  // One collapsed by hand while open stays collapsed; one expanded by hand without a tab stays expanded.
+  expanded.delete('/open');
+  expanded.add('/browsed');
+  expanded = model.followOpenTabs(expanded, new Set(['/open', '/new']), new Set(['/open', '/new']));
+  assert.deepEqual(keys(expanded), ['/browsed', '/new']);
+  // The last tab of '/new' closes and a tab opens in '/other'.
+  const before = new Set(expanded);
+  expanded = model.followOpenTabs(expanded, new Set(['/open', '/new']), new Set(['/open', '/other']));
+  assert.deepEqual(keys(expanded), ['/browsed', '/other']);
+  assert.deepEqual(keys(before), ['/browsed', '/new'], 'the given set is not changed');
+});
+
 test('folder rows merge saved or live worktrees with open tabs and use the live branch', () => {
   const view = state({ tabs: [{ id: 'main', folder: '/repo', repo: '/repo', branch: 'new' }, { id: 'added', folder: '/repo-new', repo: '/repo', branch: 'topic' }], savedWorktrees: new Map([['/repo', [{ path: '/repo', branch: 'old', main: true }]]]) });
   const group = model.groups(view)[0];

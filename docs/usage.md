@@ -36,7 +36,8 @@ The list shows repositories from ghq (including inside WSL), repositories you ad
   - The list is reloaded on start, when you press the circular arrow, and after "Add repository…". A repository you add appears at once, without waiting for the reload. The list is not reloaded when the window comes to the front, because that would start a stopped WSL each time.
   - For a source that could not be reloaded (such as WSL not answering in time), the previous repositories are kept. The reason is written as one line to `logs\repos.log` in the data folder.
 
-- When you open a tab, its repository moves to "Open repositories" and expands.
+- When you open a tab, its repository moves to "Open repositories" and expands. When its last tab closes, it moves to "Other repositories" and collapses.
+  - Repositories in "Other repositories" also start collapsed when the app starts, so that section shows one row per repository. Click one to show its worktrees. It stays expanded until the app quits or you click it again.
 - When collapsed, the repository row shows the badge of the most urgent state among its open tabs.
 - Before the name, an icon shows where the remote (origin, or the first remote if there is no origin) is hosted.
 
@@ -68,7 +69,7 @@ The list shows repositories from ghq (including inside WSL), repositories you ad
   - If any of the tabs have Claude working or waiting for approval, or have unsaved files, the app lists them and asks once (the same as the confirmation on exit). If none do, it closes them without asking.
   - When the tab in front is also closed, the app moves to a tab outside that row: the next one in tab order (the order of Ctrl+Alt+PageDown), else the previous one. If there is none, no tab is shown. Tabs being closed are not brought to the front on the way, so suspended tabs are not started.
   - A closed tab returns to the screen it had before closing when you reopen it, the same as when closed with ×.
-  - When a row has no tabs left, it moves to "Other repositories", and the row below moves up into its place. So that you do not go on to close the tabs of that row too, clicks on the tree are ignored while closing and for 0.6 seconds after (including the second click of a double click).
+  - When a row has no tabs left, it moves to "Other repositories" and collapses, and the row below moves up into its place. So that you do not go on to close the tabs of that row too, clicks on the tree are ignored while closing and for 0.6 seconds after (including the second click of a double click).
   - The button appears to the left of "＋", with a small gap. The "＋" at the right end of an expanded row stays in place.
 
 ### Repositories not cloned
