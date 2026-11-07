@@ -92,6 +92,49 @@ test('GitHub reads deduplicate and refresh invalidates older replies', async () 
   assert.deepEqual(f.state.github.get('/repo'), { url: 'new' });
 });
 
+test('a GitHub read git failed stays unknown, and is read again after waits that double up to a limit', async () => {
+  const f = fixture(); f.data.forgetGithub();
+  let read = f.data.github(group);
+  f.requests[0].resolve({ error: 'git timed out' }); await read;
+  assert.equal(f.state.github.has('/repo'), false, 'not taken for a repository outside GitHub');
+  assert.equal(f.data.pulls(group), undefined);
+  await f.data.github(group);
+  assert.equal(f.requests.length, 1, 'neither the pull requests nor the remote are asked at once');
+  // 15 s after the first failure; a rejected read is a failure too.
+  f.time(15099); await f.data.github(group); assert.equal(f.requests.length, 1);
+  f.time(15100); read = f.data.github(group); assert.equal(f.requests.length, 2);
+  f.requests[1].reject(new Error('offline')); await read;
+  assert.equal(f.state.github.has('/repo'), false);
+  // Then 30 s, 60 s, and so on, but never more than 5 minutes.
+  f.time(45099); await f.data.github(group); assert.equal(f.requests.length, 2);
+  let now = 45100;
+  for (const wait of [60000, 120000, 240000, 300000, 300000]) {
+    f.time(now); read = f.data.github(group); f.requests.at(-1).resolve({ error: 'git timed out' }); await read;
+    const asked = f.requests.length;
+    f.time(now + wait - 1); await f.data.github(group); assert.equal(f.requests.length, asked, `waits ${wait} ms`);
+    now += wait;
+  }
+  // A read that works ends it.
+  const changes = f.changes();
+  f.time(now); read = f.data.github(group); f.requests.at(-1).resolve({ url: 'https://github.com/o/r' }); await read;
+  assert.deepEqual(f.state.github.get('/repo'), { url: 'https://github.com/o/r' });
+  assert.equal(f.changes(), changes + 1);
+  f.data.pulls(group); assert.equal(f.requests.at(-1).kind, 'pulls');
+});
+
+test('"not on GitHub" is kept, and refresh reads a failed repository again at once', async () => {
+  const f = fixture(); f.data.forgetGithub();
+  let read = f.data.github(group); f.requests[0].resolve(null); await read;
+  assert.equal(f.state.github.get('/repo'), null);
+  f.time(10 * 60 * 1000); await f.data.github(group); assert.equal(f.requests.length, 1);
+  f.data.forgetGithub();
+  read = f.data.github(group); f.requests[1].resolve({ error: 'git timed out' }); await read;
+  f.data.forgetGithub();
+  read = f.data.github(group); assert.equal(f.requests.length, 3);
+  f.requests[2].resolve({ url: 'https://github.com/o/r' }); await read;
+  assert.deepEqual(f.state.github.get('/repo'), { url: 'https://github.com/o/r' });
+});
+
 test('superseded PR queries and refresh replies cannot replace the current result', async () => {
   const f = fixture(); const old = f.data.pulls(group); assert.equal(f.data.pulls(group), old);
   f.query({ branches: ['new'], numbers: [], heads: ['oid'] }); const next = f.data.pulls(group);

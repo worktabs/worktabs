@@ -1,11 +1,12 @@
 // Opening the GitHub pages of a folder's repository, and reading its branches' pull requests and
-// checks for the worktree rows. The lookups (github.js) and the browser are injected.
+// checks for the worktree rows. The lookups (github.js), the browser, and repos.log are injected.
+const { oneLine } = require('../util');
 
 // At most this many branches, and as many commits, a call: the query names each, and a command
 // line has a limit.
 const MAX_PULL_BRANCHES = 100;
 
-function createGithubPages({ githubRepo, pageUrl, checksUrl, branchPulls, hasBranchPage, openExternal }) {
+function createGithubPages({ githubRepo, readGithubRepo, pageUrl, checksUrl, branchPulls, hasBranchPage, openExternal, log }) {
   // Opens a GitHub page of the folder's repository in the default browser. The branch is read
   // again here, since a tab keeps the one it had when it opened.
   async function openGithub(folder, page) {
@@ -36,9 +37,19 @@ function createGithubPages({ githubRepo, pageUrl, checksUrl, branchPulls, hasBra
     return repo && hasBranchPage(repo) ? repo.branch : null;
   }
 
-  // The repository for the side bar: what githubRepo reads, and whether it has a branch page.
+  // The repository for the side bar: what readGithubRepo reads, and whether it has a branch page;
+  // null when it is not on GitHub. When git fails, { error } instead, which the side bar does not
+  // take for "not on GitHub" and reads again later (SidebarData.github). It resolves rather than
+  // rejects, as 'repos:worktrees' does: a rejection reaches the page as Electron's long message.
+  // The failure goes to repos.log, as nothing else shows it.
   async function repoInfo(folder) {
-    const repo = await githubRepo(folder);
+    let repo;
+    try {
+      repo = await readGithubRepo(folder);
+    } catch (error) {
+      log(`github ${folder}: ${oneLine(error)}`);
+      return { error: oneLine(error) };
+    }
     return repo && { ...repo, branchPage: hasBranchPage(repo) };
   }
 

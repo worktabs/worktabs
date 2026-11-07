@@ -51,6 +51,7 @@ const {
   mergedAtHead,
   ownedRepos,
   pageUrl,
+  readGithubRepo,
   readRemotes,
   repoVisibility,
   setGithubHosts,
@@ -797,7 +798,8 @@ const { ownedRepo, isCloning, clonePlaces, hideOwner, startClone, openCloneDialo
 // ---- GitHub and menus ----------------------------------------------------------------------
 
 const { openGithub, openNumbered, openChecks, branchPage, repoInfo, pullRequests } = createGithubPages({
-  githubRepo, pageUrl, checksUrl, branchPulls, hasBranchPage, openExternal: (url) => shell.openExternal(url),
+  githubRepo, readGithubRepo, pageUrl, checksUrl, branchPulls, hasBranchPage, openExternal: (url) => shell.openExternal(url),
+  log: logRepos,
 });
 
 const { showAddMenu, showMoreMenu, showTabMenu, showRepoMenu, showWorktreeMenu, showCloneMenu, showUnclonedMenu, showOwnerMenu } = createMenus({

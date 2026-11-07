@@ -552,10 +552,17 @@ main {
   color: #d97757;
 }
 
+/* What a repository has instead of rows (loading, none, or git's message for why they cannot be
+   read), and how to add a first repository. They wrap, as a sentence that ran past the side bar's
+   edge would bring up a scroll bar under the whole tree. `anywhere`: a path in git's message has
+   no space to break at, and break-word would not let the row shrink below it. */
 .row.empty {
   padding-left: var(--indent-worktree);
+  padding-block: 4px;
   color: var(--text-muted);
   font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .row.removing {

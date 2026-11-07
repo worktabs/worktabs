@@ -113,19 +113,22 @@ function createGithubClient({ currentBranch, defaultBranch, mainRemote, runAt, r
   }
 
   // The GitHub repository of `folder` (from its main remote: origin, else the first) with the
-  // current and default branches, or null when the remote is not on GitHub.
-  async function githubRepo(folder) {
-    let found;
-    try {
-      found = await githubRemote(folder);
-    } catch {
-      return null;
-    }
+  // current and default branches, or null when the remote is not on GitHub. Rejects when git fails
+  // to read the remote (it took too long, or a WSL distribution did not answer): that says nothing
+  // of where the remote is, and the side bar reads it again later (repoInfo in github-pages.js).
+  async function readGithubRepo(folder) {
+    const found = await githubRemote(folder);
     if (!found) return null;
     const { remote, ...repo } = found;
     const [branch, main] = await Promise.all([currentBranch(folder), defaultBranch(folder, remote, 5000)]);
     // rev-parse --abbrev-ref prints HEAD when no branch is checked out.
     return { ...repo, branch: branch && branch !== 'HEAD' ? branch : null, defaultBranch: main };
+  }
+
+  // readGithubRepo, with null when git fails too: for opening a page or naming a branch, where
+  // either way there is nothing to do with the repository.
+  async function githubRepo(folder) {
+    return readGithubRepo(folder).catch(() => null);
   }
 
   // Whether "this branch's pull request" makes sense: not on the default branch or a detached HEAD.
@@ -262,6 +265,7 @@ function createGithubClient({ currentBranch, defaultBranch, mainRemote, runAt, r
     pullsQuery,
     readApproved,
     readChecks,
+    readGithubRepo,
     readHeads,
     readOwnedRepos,
     readPulls,
