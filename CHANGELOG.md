@@ -2,6 +2,19 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.9.2] - 2026-11-07
+
+### Bug fixes
+- keep a repository's GitHub buttons when git fails to read its remote, and read it again later ([#47](https://github.com/worktabs/worktabs/pull/47))
+- collapse a repository in the sidebar when its last tab closes ([#44](https://github.com/worktabs/worktabs/pull/44))
+
+### Build
+- bump electron from 44.9.3 to 45.2.2 ([#34](https://github.com/worktabs/worktabs/pull/34))
+- bump the npm-minor group with 2 updates ([#33](https://github.com/worktabs/worktabs/pull/33))
+
+### Chores
+- look up the dialog text the app has in the close-all check ([#46](https://github.com/worktabs/worktabs/pull/46))
+
 ## [0.9.1] - 2026-11-02
 
 ### Bug fixes
