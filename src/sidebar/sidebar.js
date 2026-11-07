@@ -377,8 +377,8 @@ function shownGroups(list) {
 // A group's rows. Each conversation gets a row under its worktree, even when it is the only
 // one, so the rows look the same however many there are, and one that finished is not hidden
 // behind another that works. A repository's icon brings up its GitHub buttons, unless it is known
-// to be outside GitHub: by loadGithub once expanded, else by the main process. Folders outside
-// git have none.
+// to be outside GitHub: by loadGithub once expanded, else by the main process (also while a read
+// that git failed waits to be tried again). Folders outside git have none.
 function groupRows({ group, entries, expanded }) {
   const github = group.git ? state.github.get(group.key) : null;
   const provider = state.providers[group.key];
@@ -480,7 +480,8 @@ function shownOwners() {
 // ---- GitHub -----------------------------------------------------------------------------
 
 // Reads once whether a repository is on GitHub, when it is first expanded: its pages do not
-// depend on the branch, and the remote seldom changes (it is read again on "Refresh list").
+// depend on the branch, and the remote seldom changes (it is read again on "Refresh list"). A read
+// that git failed is tried again later (SidebarData.github).
 function loadGithub(group) {
   return data.github(group);
 }

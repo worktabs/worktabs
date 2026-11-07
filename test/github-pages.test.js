@@ -4,11 +4,19 @@ const { MAX_PULL_BRANCHES, createGithubPages } = require('../src/repos/github-pa
 
 const repo = { url: 'https://github.com/octo/hello', branch: 'fix' };
 
+// `found`: the repository, null outside GitHub, or an Error when git fails to read the remote.
 function setup({ found = repo, pulls = null } = {}) {
   const opened = [];
   const asked = [];
+  const logged = [];
+  const read = async () => {
+    if (found instanceof Error) throw found;
+    return found;
+  };
   const pages = createGithubPages({
-    githubRepo: async () => found,
+    githubRepo: () => read().catch(() => null),
+    readGithubRepo: read,
+    log: (line) => logged.push(line),
     pageUrl: async (r, page) => `${r.url}/${page}`,
     checksUrl: (r, oid) => (oid ? `${r.url}/commit/${oid}/checks` : null),
     branchPulls: async (r, branches, options) => {
@@ -19,7 +27,7 @@ function setup({ found = repo, pulls = null } = {}) {
     hasBranchPage: (r) => r.branch !== 'main',
     openExternal: (url) => opened.push(url),
   });
-  return { pages, opened, asked };
+  return { pages, opened, asked, logged };
 }
 
 test('pages open only for a repository on GitHub, and a number must be a positive integer', async () => {
@@ -41,6 +49,19 @@ test('the branch page is there for a branch other than the default', async () =>
   assert.equal(await setup().pages.branchPage('/src/hello'), 'fix');
   assert.equal(await setup({ found: { ...repo, branch: 'main' } }).pages.branchPage('/src/hello'), null);
   assert.deepEqual(await setup().pages.repoInfo('/src/hello'), { ...repo, branchPage: true });
+});
+
+test('the side bar hears of a failed read of the remote apart from "not on GitHub", and the log has it', async () => {
+  const failed = setup({ found: new Error('git timed out\nafter 5000 ms') });
+  assert.deepEqual(await failed.pages.repoInfo('/src/hello'), { error: 'git timed out after 5000 ms' });
+  assert.deepEqual(failed.logged, ['github /src/hello: git timed out after 5000 ms']);
+  // Opening a page needs the repository either way: nothing opens, and nothing is logged.
+  await failed.pages.openGithub('/src/hello', 'repo');
+  assert.deepEqual(failed.opened, []);
+  assert.equal(failed.logged.length, 1);
+  const outside = setup({ found: null });
+  assert.equal(await outside.pages.repoInfo('/src/other'), null);
+  assert.deepEqual(outside.logged, []);
 });
 
 test('pull requests are asked for at most so many branches, and a failure reads as null', async () => {

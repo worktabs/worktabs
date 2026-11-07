@@ -290,6 +290,36 @@ test('other repositories show only their own rows, at start and once their last 
   assert.equal(worktreeRows('open'), 1);
 });
 
+test('a repository whose remote git failed to read keeps its GitHub icon, and is not read again on every render', async (t) => {
+  const repo = path.join(path.parse(process.cwd()).root, 'repos', 'worktabs');
+  const key = repo.toLowerCase();
+  const folders = [{ path: repo, branch: 'topic', main: true }];
+  const snapshot = { tabs: [{ id: 'tab', folder: repo, repo, branch: 'topic', server: 'running', conversations: [] }], removing: [], repoUsed: {}, usage: [] };
+  let update;
+  let reads = 0;
+  let pullReads = 0;
+  const host = new Proxy({
+    getState: async () => snapshot,
+    getRepos: async () => ({ seq: 1, reading: false, repos: [{ path: repo, name: 'worktabs', owner: 'owner', git: true, sources: ['ghq'] }],
+      worktrees: { [key]: folders }, providers: { [key]: 'github' } }),
+    getWorktrees: async () => folders,
+    github: async () => { reads++; return { error: 'git timed out' }; },
+    pullRequests: async () => { pullReads++; return null; },
+    onUpdate: (callback) => { update = callback; },
+  }, { get: (target, property) => target[property] || (() => {}) });
+  const { document, window } = await loadSidebar({ host });
+  t.after(() => window.dispatchEvent({ type: 'beforeunload' }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads, 1);
+  assert.ok(document.querySelector('.row.repo .gh-mark'), 'the icon still brings up the GitHub buttons');
+  assert.equal(pullReads, 0, 'the pull requests wait for the repository');
+  update(snapshot);
+  update(snapshot);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads, 1);
+  assert.ok(document.querySelector('.row.repo .gh-mark'));
+});
+
 test('startup replies cannot replace newer open or closed tab state', async (t) => {
   for (const delayed of ['repos', 'tabs']) {
     for (const open of [true, false]) {

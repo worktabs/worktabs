@@ -76,6 +76,28 @@ test('configured GitHub hosts and signed-in hosts stay independent between clien
   assert.equal(await second.githubRepo('C:\\repo'), null);
 });
 
+test('a remote git fails to read rejects readGithubRepo, which githubRepo reads as null', async () => {
+  const failure = new Error('git timed out');
+  let remote = failure;
+  let url = 'https://github.com/owner/repo.git';
+  const github = createGithubClient({
+    runAt: async () => '{"hosts":{}}', runGit: async () => url,
+    mainRemote: async () => { if (remote instanceof Error) throw remote; return remote; },
+    currentBranch: async () => 'task', defaultBranch: async () => 'main',
+  });
+  await assert.rejects(github.readGithubRepo('C:\\repo'), (error) => error === failure);
+  assert.equal(await github.githubRepo('C:\\repo'), null);
+  remote = 'origin';
+  const repo = { url: 'https://github.com/owner/repo', slug: 'owner/repo', branch: 'task', defaultBranch: 'main' };
+  assert.deepEqual(await github.readGithubRepo('C:\\repo'), repo);
+  assert.deepEqual(await github.githubRepo('C:\\repo'), repo);
+  // Outside GitHub, and without a remote, is an answer, not a failure.
+  url = 'https://gitlab.com/owner/repo.git';
+  assert.equal(await github.readGithubRepo('C:\\repo'), null);
+  remote = null;
+  assert.equal(await github.readGithubRepo('C:\\repo'), null);
+});
+
 test('the client\'s API includes the remote and query readers, which need no commands', () => {
   const remote = require('../src/repos/github-remote');
   const queries = require('../src/repos/github-queries');

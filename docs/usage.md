@@ -298,6 +298,7 @@ GitHub pages open in the default browser (only when the remote is GitHub; which 
   - "GitHub" in the right-click menu opens the same pages. Use it with a pen or touch.
   - For a repository with a red dot on its icon (PRs of your own approved but not merged; see [above](#repositories)), "Approved" and the numbers of those PRs appear under the buttons. Press one to open that PR. The dot only sits on top of the icon, so hovering works the same. In a narrow sidebar, the numbers wrap.
   - They do not appear for repositories known not to be on GitHub (such as GitLab, and repositories with no remote). Even when collapsed, this is known from the remote the main process read (the same as the row icon [above](#repositories)). Only on the first start, before the remotes are read, they appear.
+  - When git cannot read the remote at that moment (it takes over 5 seconds, or a WSL distribution does not answer), the buttons still appear, as the row icon says. The remote is read again later, and the PRs and CI of the worktree rows wait until then (see [architecture.md](architecture.md#github-buttons)). The failure is written to `logs\repos.log` in the data folder.
 - PR for this branch: open it from the PR number in the worktree row (below) or from the worktree's right-click menu. For a branch without a PR, the branch icon that appears on hover ("Create a PR") opens the page for creating a PR. It does not appear for the default branch or for worktrees with no branch checked out.
 
 ### PRs and CI
