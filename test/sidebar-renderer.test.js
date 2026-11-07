@@ -250,6 +250,46 @@ test('a burst of updates renders the tree once, with the latest state, in the ne
   assert.equal(document.querySelectorAll('.row.worktree.open').length, 3);
 });
 
+test('other repositories show only their own rows, at start and once their last tab closes', async () => {
+  const used = '/repos/used';
+  const left = '/repos/left';
+  const tab = { id: 'tab', folder: used, repo: used, branch: 'main', server: 'running', conversations: [] };
+  const snapshot = (tabs) => ({ tabs, removing: [], repoUsed: {}, usage: [] });
+  const repo = (folder) => ({ path: folder, name: path.posix.basename(folder), owner: 'repos', git: true, sources: ['ghq'] });
+  const worktrees = (folder) => [{ path: folder, branch: 'main', main: true }];
+  let update;
+  const host = new Proxy({
+    getState: async () => snapshot([tab]),
+    getRepos: async () => ({ seq: 1, reading: false, repos: [repo(used), repo(left)],
+      worktrees: { [used]: worktrees(used), [left]: worktrees(left) } }),
+    getWorktrees: async (folder) => worktrees(folder),
+    github: async () => null,
+    onUpdate: (callback) => { update = callback; },
+  }, { get: (target, key) => target[key] || (() => {}) });
+  // The last run left a repository without tabs expanded.
+  const { document } = await loadSidebar({ host, localStorageValues: { expanded: [used, left] } });
+  await new Promise((resolve) => setImmediate(resolve));
+  const worktreeRows = (section) => document.querySelectorAll(`#${section}-tree .row.worktree`).length;
+  assert.equal(worktreeRows('open'), 1);
+  assert.equal(document.querySelectorAll('#other-tree .row.repo').length, 1);
+  assert.equal(worktreeRows('other'), 0);
+
+  update(snapshot([]));
+  assert.equal(document.querySelectorAll('#other-tree .row.repo').length, 2);
+  assert.equal(worktreeRows('other'), 0);
+
+  // A click still shows a repository's worktrees, and they stay while it has no tab.
+  document.querySelector('#other-tree .row.repo').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(worktreeRows('other'), 1);
+  update(snapshot([]));
+  assert.equal(worktreeRows('other'), 1);
+
+  update(snapshot([tab]));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(worktreeRows('open'), 1);
+});
+
 test('startup replies cannot replace newer open or closed tab state', async (t) => {
   for (const delayed of ['repos', 'tabs']) {
     for (const open of [true, false]) {
