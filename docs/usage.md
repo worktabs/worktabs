@@ -60,6 +60,7 @@ The list shows repositories from ghq (including inside WSL), repositories you ad
   - For repositories in WSL, the PRs are read again only while the distribution is running, except after the list is reloaded. This keeps a stopped WSL from starting.
   - This works only for repositories on GitHub. MRs and PRs on GitLab and Bitbucket are not read. Without gh, or when gh is not signed in, nothing shows.
 - Click to show the list of worktrees (`git worktree list`). The list is reloaded when you expand it, when the Worktabs window comes to the front, and when Claude finishes its work. Worktrees made outside the app show up this way too.
+  - When git cannot read the list (for example, while WSL is slow to start), the worktrees read before stay, and what git said shows below them. A long message wraps to the sidebar's width, so the list does not scroll sideways.
 - Worktree rows are indented to the position of the repository name. Conversation rows are indented to the position of the worktree name.
   - There is no expand/collapse marker (▸). A row is expanded when indented rows appear right below it. The width of a marker column goes to the name instead.
 - Folders opened outside a git repository are grouped under "Other folders".
