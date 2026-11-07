@@ -88,7 +88,7 @@ run(async () => {
   log('asked:', JSON.stringify(dialog));
   const tt = await appText();
   assert.equal(dialog.message, tt('Closing all the tabs of {name} will have these effects.', { name: repo1 }));
-  assert.ok(dialog.detail.startsWith(`${tabA.name}: ${tt('Claude is working. The turn in progress will be interrupted.')}`));
+  assert.ok(dialog.detail.startsWith(`${tabA.name}: ${tt('{agent} is working. The turn in progress will be interrupted.', { agent: 'Claude' })}`));
   assert.equal(dialog.detail.split('\n').length, 1);
   await call('key', { id: 'dialog', keyCode: 'Escape' });
   await until('the dialog to go', async () => (await call('eval', { id: 'dialog', js: DIALOG })) === null, 5000, 200);
