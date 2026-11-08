@@ -128,16 +128,16 @@
     "@eslint/js": "^10.0.1",
     "@resvg/resvg-js": "2.6.2",
     "@types/node": "^22.20.5",
-    "electron": "^45.2.2",
+    "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "git-cliff": "^2.14.2",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
-    "fast-xml-parser": "^5.11.2",
-    "semver": "^7.8.5"
+    "fast-xml-parser": "^5.12.0",
+    "semver": "^7.8.6"
   }
 }
