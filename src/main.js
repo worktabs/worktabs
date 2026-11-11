@@ -599,7 +599,7 @@ const probeInstance = createUpdateProbe({
 // `busy`) | 'applying' | 'done' | 'failed'. items: the updates, [{ kind, id, name, from, to }].
 const {
   coordinator: updateCoordinator, setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
-  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension,
+  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension, pruneSnapshots,
 } = createAppUpdates({
   config, saveConfig, dataDir, tabs, servers: codeServers.local, wslServers: codeServers.wsl, extensionImports,
   pause: (tab) => {
@@ -609,6 +609,9 @@ const {
   start: startServer, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe: probeInstance,
   messageBox, changed: pushState, log: logUpdate, find: findUpdates,
 });
+// Left behind by earlier versions of the app, which never deleted a replaced snapshot, or by a
+// run that quit in the middle of an import.
+pruneSnapshots();
 
 // ---- Updates of Worktabs itself ------------------------------------------------------------
 

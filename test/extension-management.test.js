@@ -11,6 +11,8 @@ function setup(overrides = {}) {
   const calls = [];
   const scheduled = [];
   const records = [];
+  // Whether the update coordinator was busy at each prune.
+  const prunes = [];
   const config = { agents: ['claude', 'codex'], resolvedExtensions: ['Anthropic.claude-code', 'OpenAI.chatgpt'],
     resolvedExtensionsDir: 'extensions', codeServerVersion: '4.141.0' };
   const importer = {
@@ -18,6 +20,7 @@ function setup(overrides = {}) {
     stage: (item, target) => { calls.push(['stage', item.version, target]); return { ...item, file: `snapshot/${item.version}.vsix`, source: { kind: item.kind, location: item.location } }; },
     package: (record) => record.file,
     commit: (target, next, previous) => calls.push(['commit', target, next, previous]),
+    prune: () => { prunes.push(coordinator.busy); return ['snapshot/old']; },
   };
   const coordinator = new UpdateCoordinator({
     tabs: () => new Map(), changed: () => {}, busyError: () => 'busy', startingError: () => 'starting',
@@ -40,7 +43,7 @@ function setup(overrides = {}) {
     startUpdate: async () => calls.push(['follow-up']), schedule: (fn) => scheduled.push(fn),
     ...overrides,
   });
-  return { service, calls, scheduled, records, importer, coordinator, config, servers };
+  return { service, calls, scheduled, records, importer, coordinator, config, servers, prunes };
 }
 
 test('candidate keys and invalid selections cannot begin an import transaction', async () => {
@@ -125,6 +128,23 @@ test('a failed local probe restores the previous snapshot and never starts a gal
   assert.equal(coordinator.state.status, 'failed');
   assert.equal(coordinator.state.detail, 'probe failed. The previous versions stay.');
   assert.equal(calls.some(([kind]) => ['commit', 'refresh', 'follow-up'].includes(kind)), false);
+});
+
+test('unused snapshots are pruned once a batch ends or its staging fails, never during a batch', async () => {
+  for (const probeInstance of [async () => {}, async () => { throw new Error('probe failed'); }]) {
+    const lines = [];
+    const { service, scheduled, prunes } = setup({ probeInstance, log: (line) => lines.push(line) });
+    await service.queueExtensionImports([service.rememberCandidate(candidate()).key]);
+    service.pruneSnapshots();
+    assert.deepEqual(prunes, []);
+    await scheduled.shift()();
+    assert.deepEqual(prunes, [false]);
+    assert.deepEqual(lines, ['removed 1 unused snapshot(s)']);
+  }
+  const { service, importer, prunes } = setup();
+  importer.stage = async () => { throw new Error('The extension archive is too large.'); };
+  await assert.rejects(service.queueExtensionImports([service.rememberCandidate(candidate()).key]), /too large/);
+  assert.deepEqual(prunes, [false]);
 });
 
 test('a failed restoration after a failed probe does not claim that the previous versions stay', async () => {

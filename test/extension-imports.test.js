@@ -139,6 +139,36 @@ test('VSIX snapshots copy the exact file and detect changes to the cached payloa
   assert.throws(() => store.package({ ...first, file: path.join(root, 'elsewhere.vsix') }), /has changed/);
 });
 
+test('pruning keeps the current and previous snapshots of every target and deletes the rest', async (t) => {
+  const root = fixture(t);
+  const store = new ExtensionImports(path.join(root, 'store'));
+  const snapshot = async (version, target = 'win32-x64') => store.stage(folder(root, version), target);
+  const first = await snapshot('1.0.0');
+  store.commit('win32-x64', [first], []);
+  const second = await snapshot('2.0.0');
+  store.commit('win32-x64', [second], [first]);
+  const third = await snapshot('3.0.0');
+  store.commit('win32-x64', [third], [second]);
+  const linux = await snapshot('1.0.0', 'linux-x64');
+  store.commit('linux-x64', [linux], []);
+  // Staged by a batch that never committed.
+  const failed = await snapshot('4.0.0');
+  const folderOf = (record) => path.dirname(record.file);
+  assert.deepEqual(store.prune().sort(), [folderOf(first), folderOf(failed)].sort());
+  for (const record of [second, third, linux]) assert.equal(store.package(record), record.file);
+  for (const record of [first, failed]) assert.equal(fs.existsSync(folderOf(record)), false);
+  assert.deepEqual(store.prune(), []);
+  // A data folder that moved keeps the snapshots its records name.
+  const moved = path.join(root, 'moved');
+  fs.cpSync(store.root, moved, { recursive: true });
+  assert.deepEqual(new ExtensionImports(moved).prune(), []);
+  // Records that cannot be read do not tell what is in use, so nothing goes.
+  const orphan = await snapshot('5.0.0');
+  fs.writeFileSync(store.file, '[]');
+  assert.deepEqual(store.prune(), []);
+  assert.equal(fs.existsSync(orphan.file), true);
+});
+
 test('snapshot validation catches a source replaced after selection', async (t) => {
   const root = fixture(t);
   const item = folder(root);
