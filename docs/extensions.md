@@ -11,15 +11,15 @@ Settings and extension management follow the Worktabs UI language, including act
 | Extension | Default source | How to update |
 |---|---|---|
 | Claude Code | Publisher's Open VSX release | Check and apply updates in Worktabs |
-| Codex | User-provided desktop VS Code extension or VSIX | Update the source, then re-import in Worktabs |
+| Codex | User-provided desktop VS Code extension or VSIX, or Open VSX after **Use Open VSX** | Update the source and re-import, or apply Worktabs updates when taken from Open VSX |
 | Extra configured extensions | Open VSX, unless imported | Apply Worktabs updates, or re-import from the recorded source |
 | Language pack and Worktabs helper | Worktabs-managed | Keep with code-server and the app's helper version |
 
-Claude does not require desktop VS Code. Anthropic [documents Open VSX installation for VS Code forks](https://code.claude.com/docs/en/vs-code#install-the-extension). Imported extensions are locked to their recorded source and excluded from Open VSX updates. Existing Codex installs can still run, but Worktabs no longer installs or offers older Open VSX releases as a fallback for Codex.
+Claude does not require desktop VS Code. Anthropic [documents Open VSX installation for VS Code forks](https://code.claude.com/docs/en/vs-code#install-the-extension). Imported extensions are locked to their recorded source and excluded from the gallery updates. Worktabs does not install Codex from the gallery; **Use Open VSX** takes it from Open VSX as a snapshot (see [Taking releases from Open VSX](#taking-releases-from-open-vsx)).
 
 Branch name suggestions also use the executable inside the selected provider's active Worktabs extension. A separate CLI install on `PATH` is not required for Claude or Codex. Each suggestion reads the active extension index again, so applying an update, re-importing, or restoring an extension changes the executable used on the next attempt. Worktabs keeps executable installation and updates with the extension's source above.
 
-If the extension or executable is missing, the add-worktree dialog points to setup in Worktabs. Enable Claude and open a tab to install it, or import Codex for the computer's platform and architecture in **Settings > Extensions**. If authentication is missing or expired, open the provider's chat panel in a Worktabs tab and sign in. For WSL, use a tab in the same distribution as the repository; its Linux extension and login are separate from Windows. Worktabs does not manage Codex login or edit its configuration.
+If the extension or executable is missing, the add-worktree dialog points to setup in Worktabs. Enable Claude and open a tab to install it. For Codex, press **Use Open VSX** on its row in **Settings > Extensions**, or import it for the computer's platform and architecture. If authentication is missing or expired, open the provider's chat panel in a Worktabs tab and sign in. For WSL, use a tab in the same distribution as the repository; its Linux extension and login are separate from Windows. Worktabs does not manage Codex login or edit its configuration.
 
 For desktop imports, periodically open VS Code and update there. **Open VS Code** launches the desktop app; Worktabs does not operate its updater. Return to Worktabs, check for updates, and apply the newer local version. This checks active versions in the recorded folder, not the latest release worldwide. For VSIX imports, periodically obtain and import a newer compatible file. Desktop VS Code offers **Download VSIX** and **Download Specific Version VSIX** ([official instructions](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#can-i-download-an-extension-directly-from-the-marketplace)).
 
@@ -34,6 +34,19 @@ For desktop imports, periodically open VS Code and update there. **Open VS Code*
 Worktabs validates ID, version, archive paths, platform, VS Code engine requirement, and required extensions. Dependencies must already be installed or included in the same batch. Language packs and the helper cannot be replaced by imports. Complete payloads, including native binaries, are kept together. An import can be up to 4 GiB unpacked and 2 GiB as a VSIX. Packing a large desktop extension can take a minute or more; Codex is over 1 GB because it bundles Windows and Linux binaries.
 
 Copying is not permission to use an extension in another application. The [VS Code FAQ](https://code.visualstudio.com/docs/supporting/faq#extensions) describes Marketplace access restrictions and restrictions on Microsoft extensions. Check publisher terms too. Import support does not promise that every Marketplace extension is licensed or compatible with code-server.
+
+## Taking releases from Open VSX
+
+**Use Open VSX** appears on the rows of imported extensions and of Codex. It takes the newest release from Open VSX for the selected target, as a snapshot like an import:
+
+- Only releases are taken, never pre-releases, and only versions whose VS Code engine requirement accepts the running code-server. Codex numbers its pre-releases above its releases (26.5xxxx and 26.1xxx), so they are told apart by Open VSX's pre-release flag, not by the version.
+- An extension built once for every platform (universal) is found too.
+- The members of an extension pack come in the same batch, at the pack's version when Open VSX has it, else at their newest release. Codex brings Codex Audio this way. They are updated and restored with the pack.
+- Worktabs downloads the files itself, through the system proxy, and checks each against the SHA-256 that Open VSX publishes beside it. This catches a broken or cut download, not a server that sends something else.
+- The download runs before the update waits for the tabs. The sidebar's update card shows its progress, and the tabs keep running until the switch.
+- What the extension had before becomes the previous snapshot. An import stays there, so **Restore previous** goes back to it, with its recorded source. Importing again from VS Code or a VSIX replaces an Open VSX snapshot the same way.
+
+Checking for updates asks Open VSX about the snapshots taken from there, for this computer, and offers newer releases. They are installed and tried like an import (see below), so a version that does not start goes back to the previous snapshot without a download. For WSL, select the Linux target and press **Use Open VSX** again to take a newer release; it is prepared like a Linux import.
 
 ## Applying and restoring
 

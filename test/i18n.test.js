@@ -75,7 +75,7 @@ test('settings and extension management keep Japanese labels, accessibility text
   });
   sources.push({ text: 'Extensions and updates' });
   // Product names are kept as the source labels; everything else needs a translation.
-  const products = new Set(['VS Code', 'Worktabs / Open VSX']);
+  const products = new Set(['VS Code', 'Open VSX', 'Worktabs / Open VSX']);
   for (const { text } of sources) {
     assert.ok(Object.hasOwn(TRANSLATIONS.ja, text), text);
     if (!products.has(text)) assert.notEqual(TRANSLATIONS.ja[text], text, text);

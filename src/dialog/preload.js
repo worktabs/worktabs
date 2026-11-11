@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('host', {
     list: (target) => ipcRenderer.invoke('extensions:list', target),
     browse: (kind) => ipcRenderer.invoke('extensions:browse', kind),
     import: (keys, target) => ipcRenderer.invoke('extensions:import', keys, target),
+    openVsx: (id, target) => ipcRenderer.invoke('extensions:open-vsx', id, target),
     rollback: (id, target) => ipcRenderer.invoke('extensions:rollback', id, target),
     openCode: () => ipcRenderer.invoke('extensions:open-code'),
     page: (id) => ipcRenderer.invoke('extensions:page', id),

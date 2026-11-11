@@ -105,6 +105,11 @@ function appIpcRoutes(app) {
       'extensions:list': fromSettings(app.extensionState),
       'extensions:browse': fromSettings(app.browseExtensionSource),
       'extensions:import': fromSettings((keys, target) => app.queueExtensionImports(keys, target)),
+      // One extension, by ID; useOpenVsx checks the ID and the target.
+      'extensions:open-vsx': fromSettings((id, target) => {
+        if (typeof id !== 'string' || typeof target !== 'string') throw new Error(t('Invalid extension selection.'));
+        return app.useOpenVsx([id], target);
+      }),
       'extensions:rollback': fromSettings(app.rollbackExtension),
       'extensions:open-code': fromSettings(app.openDesktopCode),
       'extensions:page': fromSettings((id) => {

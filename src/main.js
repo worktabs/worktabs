@@ -15,6 +15,7 @@ const {
   dialog,
   ipcMain,
   nativeTheme,
+  net,
   screen,
   session,
   shell,
@@ -87,6 +88,7 @@ const { createChatStartupWatch } = require('./conversations/chat-startup');
 const { createWebviewSites } = require('./tabs/webview-sites');
 const { StartupGate } = require('./tabs/startup-gate');
 const { createAppUpdates } = require('./code-server/app-updates');
+const { createOpenVsx } = require('./code-server/open-vsx');
 const { prepareCodeServer, wrapperProblem } = require('./code-server/startup-preparation');
 const { createUpdateProbe } = require('./code-server/update-probe');
 const { RepositoryService } = require('./repos/repository-service');
@@ -602,7 +604,7 @@ const probeInstance = createUpdateProbe({
 // `busy`) | 'applying' | 'done' | 'failed'. items: the updates, [{ kind, id, name, from, to }].
 const {
   coordinator: updateCoordinator, setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
-  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension, pruneSnapshots,
+  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, rollbackExtension, pruneSnapshots,
 } = createAppUpdates({
   config, saveConfig, dataDir, tabs, servers: codeServers.local, wslServers: codeServers.wsl, extensionImports,
   pause: (tab) => {
@@ -611,6 +613,8 @@ const {
   },
   start: startServer, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe: probeInstance,
   messageBox, changed: pushState, log: logUpdate, find: findUpdates,
+  // Chromium's network stack, so the system proxy settings apply to the downloads.
+  openVsx: createOpenVsx({ fetch: (url, options) => net.fetch(url, options) }),
 });
 // Left behind by earlier versions of the app, which never deleted a replaced snapshot, or by a
 // run that quit in the middle of an import. Only in the instance that holds the lock: another
@@ -972,7 +976,7 @@ registerIpc(ipcMain, appIpcRoutes({
   suggestBranch: (repo, task) => suggestBranch(repo, task, { agent: effectiveBranchAgent(config), extensionsDir: config.resolvedExtensionsDir }),
   cloneRequests,
   fromSettingsDialog: appDialogs.fromSettingsDialog,
-  saveSettings, extensionState, browseExtensionSource, queueExtensionImports, rollbackExtension, openDesktopCode,
+  saveSettings, extensionState, browseExtensionSource, queueExtensionImports, useOpenVsx, rollbackExtension, openDesktopCode,
   openExternal: (url) => shell.openExternal(url), checkForUpdates,
   updateAvailable: () => updateCoordinator.state.status === 'available',
   queueUpdate: () => setTimeout(() => startUpdate().catch((error) => setUpdate({ status: 'failed', detail: error.message })), 0),

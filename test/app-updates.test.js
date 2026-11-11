@@ -4,14 +4,15 @@ const { createAppUpdates, downloadProgress } = require('../src/code-server/app-u
 
 const update = { kind: 'extension', id: 'a.b', from: '1.0.0', to: '1.1.0' };
 
-function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null } = {}) {
+function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local' } = {}) {
   const calls = [];
   const logged = [];
   const config = { agents: ['claude', 'codex'], codeServerVersion: '4.0.0', resolvedExtensions: [], resolvedExtensionsDir: '/ext' };
   const updates = createAppUpdates({
     config, saveConfig: () => {}, dataDir: '/data', tabs: new Map(tabs.map((tab) => [tab.id, tab])),
-    servers: () => ({ codeServerDir: '/cs' }), wslServers: new Map(),
-    extensionImports: { localUpdates: () => [...local], records: () => [] },
+    servers: () => ({ codeServerDir }), wslServers: new Map(), openVsx,
+    extensionImports: { localUpdates: () => [...local], records: () => records, prune: () => [],
+      stage: async () => { throw new Error('offline'); } },
     pause: () => {}, start: () => {}, stopRisks: async (tab) => tab.risks || [],
     callHelper: async () => (codexActive === null ? false : { active: codexActive }),
     helperExtensions: () => [], refreshResolvedExtensions: () => {}, probe: async () => {},
@@ -20,10 +21,35 @@ function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], cod
       if (found instanceof Error) throw found;
       return found;
     },
-    localExtensions: () => [], target: () => 'local',
+    localExtensions: () => [], target: () => target,
   });
   return { updates, calls, logged };
 }
+
+test('newer Open VSX releases of snapshots join the gallery updates, and are applied through the snapshot batch first', async (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const codeServerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worktabs-cs-'));
+  t.after(() => fs.rmSync(codeServerDir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(codeServerDir, 'lib', 'vscode'), { recursive: true });
+  fs.writeFileSync(path.join(codeServerDir, 'lib', 'vscode', 'package.json'), JSON.stringify({ version: '1.145.2' }));
+  const latest = { kind: 'openvsx', id: 'openai.chatgpt', name: 'Codex', version: '26.1106.51428', targetPlatform: 'win32-x64', bundled: [] };
+  const openVsx = { latestRelease: async () => latest, releaseOf: async () => null, download: async () => {} };
+  const records = [{ id: 'openai.chatgpt', name: 'Codex', version: '26.1021.22027', source: { kind: 'openvsx' } }];
+  const { updates, logged } = setup({ found: { updates: [update], errors: [] }, records, openVsx, codeServerDir, target: 'win32-x64' });
+  await updates.checkForUpdates();
+  const fromOpenVsx = { kind: 'openvsx', id: 'openai.chatgpt', name: 'Codex', from: '26.1021.22027', to: '26.1106.51428', target: 'win32-x64' };
+  assert.deepEqual(updates.coordinator.state, { status: 'available', items: [update, fromOpenVsx] });
+  assert.deepEqual(logged, ['check: a.b 1.0.0 -> 1.1.0, openai.chatgpt 26.1021.22027 -> 26.1106.51428']);
+  await updates.startUpdate();
+  assert.equal(updates.coordinator.state.status, 'preparing');
+  assert.deepEqual(updates.coordinator.state.items.map((item) => `${item.id} ${item.to}`), ['openai.chatgpt 26.1106.51428']);
+  // The download fails (the fake store is offline), so the gallery update does not follow.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(updates.coordinator.state.status, 'failed');
+  assert.match(updates.coordinator.state.detail, /offline\. The previous versions stay\./);
+});
 
 test('updates found are offered; none found says so only when asked from the menu', async () => {
   const offered = setup({ found: { updates: [update], errors: [] } });

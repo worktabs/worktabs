@@ -205,3 +205,140 @@ test('extension state distinguishes active local installs, prepared snapshots, a
   assert.equal(linux.rows.find((item) => item.id === 'openai.chatgpt').prepared, true);
   assert.deepEqual(linux.targets, ['win32-x64', 'linux-x64', 'linux-arm64']);
 });
+
+// ---- Open VSX releases as snapshots (#54)
+
+const release = (id, version, bundled = []) => ({ kind: 'openvsx', id, name: id, version, targetPlatform: 'win32-x64',
+  download: `https://cdn.example/${id}-${version}.vsix`, sha256: `https://cdn.example/${id}-${version}.sha256`, bundled, page: `https://open-vsx.org/extension/${id.replace('.', '/')}` });
+
+function fakeOpenVsx({ latest = {}, versions = {}, fail = null } = {}) {
+  const asked = [];
+  return {
+    asked,
+    latestRelease: async (id) => { asked.push(['latest', id]); if (fail === id) throw new Error(`${id}: HTTP 503`); return latest[id] || null; },
+    releaseOf: async (id, version) => { asked.push(['of', id, version]); return versions[`${id}@${version}`] || null; },
+    download: async (item, _file, { onProgress }) => {
+      asked.push(['download', item.id, item.version]);
+      if (fail === `download ${item.id}`) throw new Error('connection reset');
+      onProgress(100, 381);
+    },
+  };
+}
+
+// A store whose stage downloads Open VSX releases through the given download, as the real one does.
+function openVsxSetup(options = {}) {
+  const lines = [];
+  let clock = 0;
+  const context = setup({
+    validateBatch: () => {}, readVsix: (file) => ({ id: file }), now: () => (clock += 5000), log: (line) => lines.push(line), ...options,
+  });
+  context.importer.stage = async (item, _target, { download } = {}) => {
+    if (item.kind === 'openvsx') await download(item, `snapshot/${item.id}-${item.version}.vsix`);
+    context.calls.push(['stage', item.id, item.version]);
+    return { id: item.id, name: item.name, version: item.version, file: `snapshot/${item.id}-${item.version}.vsix`,
+      source: item.snapshotSource || { kind: item.kind }, ...(item.bundled?.length ? { bundled: item.bundled } : {}) };
+  };
+  const details = [];
+  const report = context.coordinator.report.bind(context.coordinator);
+  context.coordinator.report = (state) => { if (state.detail) details.push(state.detail); report(state); };
+  return { ...context, details, lines };
+}
+
+test('Open VSX releases come with their pack members at the same version, download in the preparation, and keep an import as the previous version', async () => {
+  const openVsx = fakeOpenVsx({
+    latest: { 'openai.chatgpt': release('openai.chatgpt', '26.1106.51428', ['openai.codex-audio']) },
+    versions: { 'openai.codex-audio@26.1106.51428': release('openai.codex-audio', '26.1106.51428') },
+  });
+  const { service, calls, scheduled, records, coordinator, details, prunes } = openVsxSetup({ openVsx });
+  const imported = { id: 'openai.chatgpt', name: 'Codex', version: '26.1021.22027', file: 'snapshot/imported.vsix', source: { kind: 'vscode' } };
+  records.push(imported);
+  assert.deepEqual(await service.useOpenVsx('OpenAI.chatgpt'), { queued: true });
+  // Looked up before the update began, so that a missing release reaches the dialog.
+  assert.deepEqual(coordinator.state.items.map((item) => `${item.id} ${item.to}`), ['openai.codex-audio 26.1106.51428', 'openai.chatgpt 26.1106.51428']);
+  assert.equal(calls.length, 0);
+  await scheduled.shift()();
+  assert.deepEqual(openVsx.asked, [
+    ['latest', 'openai.chatgpt'], ['of', 'openai.codex-audio', '26.1106.51428'],
+    ['download', 'openai.codex-audio', '26.1106.51428'], ['download', 'openai.chatgpt', '26.1106.51428'],
+  ]);
+  assert.ok(details.includes('Downloading openai.chatgpt 26.1106.51428 from Open VSX… 100 / 381 MB'));
+  assert.deepEqual(calls.filter(([kind]) => kind === 'install').map(([, file]) => file), ['snapshot/openai.codex-audio-26.1106.51428.vsix', 'snapshot/openai.chatgpt-26.1106.51428.vsix']);
+  const [, target, next, previous] = calls.find(([kind]) => kind === 'commit');
+  assert.equal(target, 'win32-x64');
+  assert.deepEqual(next.map((record) => [record.id, record.source.kind, record.bundled]), [['openai.codex-audio', 'openvsx', undefined], ['openai.chatgpt', 'openvsx', ['openai.codex-audio']]]);
+  assert.deepEqual(previous, [imported]);
+  assert.equal(coordinator.state.status, 'done');
+  assert.deepEqual(prunes, [false]);
+});
+
+test('a pack member missing at the pack version comes at its newest release, and one missing altogether stops before the update', async () => {
+  const pack = release('acme.pack', '2.0.0', ['acme.member']);
+  const later = openVsxSetup({ openVsx: fakeOpenVsx({ latest: { 'acme.pack': pack, 'acme.member': release('acme.member', '1.5.0') } }) });
+  await later.service.useOpenVsx(['acme.pack']);
+  assert.deepEqual(later.coordinator.state.items.map((item) => `${item.id} ${item.to}`), ['acme.member 1.5.0', 'acme.pack 2.0.0']);
+  for (const latest of [{ 'acme.pack': pack }, {}]) {
+    const { service, coordinator, scheduled } = openVsxSetup({ openVsx: fakeOpenVsx({ latest }) });
+    await assert.rejects(service.useOpenVsx(['acme.pack']), /Open VSX has no release of acme\.(member, which acme\.pack includes|pack for win32-x64)/);
+    assert.equal(coordinator.busy, false);
+    assert.equal(scheduled.length, 0);
+  }
+  const { service } = openVsxSetup({ openVsx: fakeOpenVsx() });
+  for (const ids of [[], ['../evil'], 'not an id', Array(21).fill('acme.pack')]) await assert.rejects(service.useOpenVsx(ids), /Invalid extension selection/);
+  await assert.rejects(service.useOpenVsx(['acme.pack'], 'plan9-x64'), /Unsupported extension target/);
+  await assert.rejects(setup().service.useOpenVsx(['acme.pack']), /not available/);
+});
+
+test('a download that fails in the preparation changes nothing and leaves no snapshot behind', async () => {
+  const openVsx = fakeOpenVsx({ latest: { 'openai.chatgpt': release('openai.chatgpt', '26.1106.51428') }, fail: 'download openai.chatgpt' });
+  const { service, calls, scheduled, coordinator, prunes } = openVsxSetup({ openVsx });
+  await service.useOpenVsx(['openai.chatgpt']);
+  await scheduled.shift()();
+  assert.equal(coordinator.state.status, 'failed');
+  assert.equal(coordinator.state.detail, 'connection reset. The previous versions stay.');
+  assert.equal(calls.some(([kind]) => ['install', 'commit'].includes(kind)), false);
+  assert.deepEqual(prunes, [false]);
+});
+
+test('updates are looked up on Open VSX for the records taken from there, without their pack members', async () => {
+  const openVsx = fakeOpenVsx({ latest: { 'openai.chatgpt': release('openai.chatgpt', '26.1106.51428'), 'acme.same': release('acme.same', '1.0.0') }, fail: 'acme.down' });
+  const { service, records } = openVsxSetup({ openVsx });
+  records.push(
+    { id: 'openai.chatgpt', name: 'Codex', version: '26.1021.22027', source: { kind: 'openvsx' }, bundled: ['openai.codex-audio'] },
+    { id: 'openai.codex-audio', name: 'Codex Audio', version: '26.1021.22027', source: { kind: 'openvsx' } },
+    { id: 'acme.same', name: 'Same', version: '1.0.0', source: { kind: 'openvsx' } },
+    { id: 'acme.down', name: 'Down', version: '1.0.0', source: { kind: 'openvsx' } },
+    { id: 'acme.desktop', name: 'Desktop', version: '1.0.0', source: { kind: 'vscode' } },
+  );
+  const { updates, errors } = await service.openVsxUpdates();
+  assert.deepEqual(updates, [{ kind: 'openvsx', id: 'openai.chatgpt', name: 'Codex', from: '26.1021.22027', to: '26.1106.51428', target: 'win32-x64' }]);
+  assert.deepEqual(errors, ['acme.down: HTTP 503']);
+  assert.deepEqual(openVsx.asked.map(([, id]) => id), ['openai.chatgpt', 'acme.same', 'acme.down']);
+  assert.deepEqual(await setup().service.openVsxUpdates(), { updates: [], errors: [] });
+});
+
+test('restoring the previous version brings back the pack members too, with their recorded sources', async () => {
+  const { service, records, scheduled, calls } = openVsxSetup({
+    openVsx: fakeOpenVsx(),
+    readVsix: (file) => ({ ...candidate(file.includes('audio') ? '1.0.0' : '2.0.0'), id: file.includes('audio') ? 'openai.codex-audio' : 'openai.chatgpt', kind: 'vsix', location: file }),
+  });
+  records.push(
+    { id: 'openai.chatgpt', version: '3.0.0', file: 'snapshot/codex-3.vsix', source: { kind: 'openvsx' }, bundled: ['openai.codex-audio'],
+      previous: { id: 'openai.chatgpt', version: '2.0.0', file: 'snapshot/codex-2.vsix', source: { kind: 'vscode', location: 'desktop' } } },
+    { id: 'openai.codex-audio', version: '3.0.0', file: 'snapshot/audio-3.vsix', source: { kind: 'openvsx' },
+      previous: { id: 'openai.codex-audio', version: '1.0.0', file: 'snapshot/audio-1.vsix', source: { kind: 'openvsx' } } },
+  );
+  assert.deepEqual(await service.rollbackExtension('openai.chatgpt', 'win32-x64'), { queued: true });
+  await scheduled.shift()();
+  const [, , next] = calls.find(([kind]) => kind === 'commit');
+  assert.deepEqual(next.map((record) => [record.id, record.version, record.source.kind]), [['openai.codex-audio', '1.0.0', 'openvsx'], ['openai.chatgpt', '2.0.0', 'vscode']]);
+});
+
+test('the extension table offers Open VSX for imports and for Codex, and names the Open VSX source', () => {
+  const { service, records } = setup({ openVsx: fakeOpenVsx() });
+  const rows = () => Object.fromEntries(service.extensionState().rows.map((row) => [row.id, [row.source, row.openVsx]]));
+  assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Import required', true] });
+  records.push({ id: 'openai.chatgpt', name: 'Codex', version: '1', source: { kind: 'openvsx', location: 'https://open-vsx.org/extension/openai/chatgpt' } },
+    { id: 'acme.tool', name: 'Tool', version: '1', source: { kind: 'vscode' } });
+  assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Open VSX', false], 'acme.tool': ['VS Code', true] });
+  assert.equal(setup().service.extensionState().rows.some((row) => row.openVsx), false);
+});

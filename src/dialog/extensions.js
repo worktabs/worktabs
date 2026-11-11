@@ -84,6 +84,8 @@ function renderExtensionState(data) {
       if (!extensionPermissionEl.checked) throw new Error(t('Confirm permission before importing.'));
       return importExtensions([candidate.key]);
     }));
+    // Takes the newest release from Open VSX; the current version stays as the previous one.
+    if (item.openVsx) actions.append(extensionButton(t('Use Open VSX'), () => window.host.extensions.openVsx(item.id, extensionTargetEl.value)));
     if (item.previous) actions.append(extensionButton(t('Restore previous'), () => window.host.extensions.rollback(item.id, extensionTargetEl.value)));
     actions.append(extensionButton(t('Official page'), () => window.host.extensions.page(item.id)));
     row.append(name, source, version, actions);
