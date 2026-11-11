@@ -177,6 +177,22 @@ test('preparation failure marks waiting and later tabs as errors without startin
   assert.ok(!events.some(([name]) => name === 'stop'));
 });
 
+test('a gate that may pass next time leaves the tab stopped, and selecting it tries again', async () => {
+  let attempts = 0;
+  const { lifecycle, starts, open } = setup({ prepare: async () => {
+    if (++attempts === 1) throw Object.assign(new Error('Could not install Codex from Open VSX: offline'), { retryable: true });
+  } });
+  const tab = open('a', { start: true });
+  await lifecycle.start(tab);
+  assert.equal(tab.server, 'stopped');
+  assert.match(tab.error, /offline/);
+  lifecycle.activate(tab.id);
+  await lifecycle.starts.get(tab.id);
+  assert.equal(attempts, 2);
+  assert.equal(starts.length, 1);
+  assert.equal(tab.server, 'running');
+});
+
 test('saved tabs, history and ports survive opening and closing tabs during preparation', async () => {
   const gate = new StartupGate();
   const { lifecycle, sessions, starts, open } = setup({ prepare: () => gate.wait() });

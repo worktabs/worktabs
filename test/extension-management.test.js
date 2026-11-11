@@ -452,7 +452,9 @@ test('Codex for a WSL target is prepared without waiting for the tabs here, and 
 test('a WSL start does not wait for Codex while another update runs, which may wait for that start', async () => {
   const { service, scheduled, coordinator, openVsx } = codexSetup({ setup: { sleep: () => new Promise((resolve) => setImmediate(resolve)) } });
   coordinator.report({ status: 'applying', items: [] });
-  // Resolves at once; the take runs after the other update.
+  // Resolves at once; the take runs after the other update. A second WSL start of the same
+  // target does not join that waiting take either.
+  await service.ensureCodex('linux-x64', { whenIdle: true });
   await service.ensureCodex('linux-x64', { whenIdle: true });
   assert.equal(service.hasCodex('linux-x64'), false);
   assert.equal(openVsx.asked.length, 0);

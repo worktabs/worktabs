@@ -209,24 +209,23 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   // resolves once it is there (#50). Concurrent callers share one take. Another update in
   // progress is waited for, as only one runs at a time. Rejects with why it is not there, so
   // that a Codex tab says so and a later start tries again.
-  // `whenIdle`: resolve at once when another update runs now, leaving the take to run after it.
-  // A WSL tab waits here in the middle of its start, and an update in progress may wait for that
-  // start (a starting tab counts as busy, and its resume restarts tabs). The take for a Linux
-  // target itself never waits for tabs (shared: false), so joining it is safe.
+  // `whenIdle`: wait only for this target's own take once it runs. A WSL tab waits here in the
+  // middle of its start, and another update may wait for that start (a starting tab counts as
+  // busy, and its resume restarts tabs). A take for a Linux target never waits for tabs
+  // (shared: false), so joining one that runs is safe; one still waiting for another update, or
+  // another update running now, is left to run after it.
   function ensureCodex(target = localTarget(), { whenIdle = false } = {}) {
     if (!config.agents.includes('codex') || hasCodex(target)) return Promise.resolve();
-    if (whenIdle && !codexTakes.has(target) && otherUpdate()) {
-      ensureCodex(target).catch((error) => log(`Codex for ${target} not taken: ${error.message}`));
-      return Promise.resolve();
-    }
     if (!codexTakes.has(target)) {
-      const take = (async () => {
+      const entry = { running: false, promise: null };
+      entry.promise = (async () => {
         const deadline = now() + IDLE_WAIT;
         while (otherUpdate()) {
           if (now() > deadline) throw new Error(t('Another update is in progress.'));
           await sleep(2000);
         }
         if (hasCodex(target)) return;
+        entry.running = true;
         log(`taking Codex from Open VSX for ${target}`);
         // Updates on offer stay on offer: the take reports in their place while it runs.
         const offered = updateCoordinator.state.status === 'available' ? updateCoordinator.state.items : [];
@@ -237,9 +236,15 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
         }
         if (offered.length && !updateCoordinator.busy) setUpdate({ status: 'available', items: offered });
       })().finally(() => codexTakes.delete(target));
-      codexTakes.set(target, take);
+      codexTakes.set(target, entry);
     }
-    return codexTakes.get(target);
+    const entry = codexTakes.get(target);
+    // The take runs synchronously up to its first wait, so `running` is already known here.
+    if (whenIdle && !entry.running) {
+      entry.promise.catch((error) => log(`Codex for ${target} not taken: ${error.message}`));
+      return Promise.resolve();
+    }
+    return entry.promise;
   }
 
   // Downloads and stages `releases`, then checks them as an import batch is checked.

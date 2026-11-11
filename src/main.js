@@ -165,7 +165,8 @@ async function codexReady(tab) {
   try {
     await ensureCodex(localTarget());
   } catch (error) {
-    throw new Error(t('Could not install Codex from Open VSX: {error} Select the tab to try again, or import Codex in Settings > Extensions.', { error: error.message }), { cause: error });
+    // Retryable: the lifecycle leaves the tab stopped, and selecting it starts (and takes) again.
+    throw Object.assign(new Error(t('Could not install Codex from Open VSX: {error} Select the tab to try again, or import Codex in Settings > Extensions.', { error: error.message }), { cause: error }), { retryable: true });
   }
 }
 
