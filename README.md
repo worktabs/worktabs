@@ -13,6 +13,8 @@ One window for your Claude Code and Codex conversations, one tab per git worktre
 
 ![Worktabs: the sidebar lists repositories, their worktrees with their pull requests and CI, and the Claude Code and Codex conversations in each, with their states and Codex subagents; on the right, the VS Code of the selected worktree with the Claude Code chat panel. Example data.](docs/images/worktabs.png)
 
+[Watch it in motion: a 40-second video on YouTube](https://youtu.be/DdB_f7G_cYw)
+
 Worktabs starts a browser-based VS Code (code-server) for each git worktree and lets you switch between them from a sidebar. Each tab runs the selected agent's own extension and chat panel. Claude Code is installed by default; Codex can be enabled after importing a compatible extension. Badges in the sidebar and OS notifications tell you which conversations are working and which are waiting for you. It runs on Windows and macOS.
 
 ## Who it is for

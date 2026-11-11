@@ -13,6 +13,8 @@ Claude Code と Codex の会話をひとつの窓に集め、git worktree ごと
 
 ![Worktabs: 左のサイドバーに、リポジトリ、その worktree と PR・CI、それぞれの Claude Code と Codex の会話と状態、Codex のサブエージェントが並び、右に選んだ worktree の VS Code と Claude Code のチャット欄が出ている（見本のデータ）](docs/images/worktabs.ja.png)
 
+[動いているところは 40 秒の動画で（YouTube）](https://youtu.be/mR1Rff7QtwY)
+
 git worktree ごとにブラウザ版 VS Code（code-server）を起動し、左のサイドバーで切り替えるアプリです。各タブでは、選んだエージェントの拡張とそのチャット欄をそのまま使います。Claude Code は既定で入ります。Codex は、対応する拡張をインポートすると使えます。どの会話が作業中か、自分の返事を待っているかは、サイドバーのバッジと OS の通知でわかります。Windows と macOS で動きます。
 
 ## 誰のためのものか
