@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const { resolveAgentCli } = require('./agent-cli');
 const { jsonScanner } = require('../codex/codex-wrap');
 const { CodexQuotaObserver } = require('../codex/codex-quota');
+const { isSpend } = require('./usage');
 
 const REFRESH_EVERY = 5 * 60 * 1000;
 const TIMEOUT = 20000;
@@ -17,6 +18,41 @@ function claudeWindows(value, now = Date.now()) {
     }
   }
   return windows;
+}
+
+const isPlaces = (value) => Number.isInteger(value) && value >= 0 && value <= 6;
+
+// The amounts of one spend limit, or null. Amounts come in minor units with their number of
+// decimal places (USD 100.00 is 10000 and 2). Both are put in the larger of the two, so that they
+// are shown with the same number of decimals.
+function spendLimit(used, usedPlaces, limit, limitPlaces, currency, reached) {
+  // Checked before scaling them, which would turn null or "9" into a number.
+  if (!Number.isSafeInteger(used) || !Number.isSafeInteger(limit) || !isPlaces(usedPlaces) || !isPlaces(limitPlaces)) return null;
+  const places = Math.max(usedPlaces, limitPlaces);
+  const spend = { used: used * 10 ** (places - usedPlaces), limit: limit * 10 ** (places - limitPlaces), places, currency, reached };
+  return isSpend(spend) ? spend : null;
+}
+
+// The monthly spend limit that accounts with extra usage (Enterprise, and Pro and Max with extra
+// usage turned on) have: { used, limit, places, currency, reached }, used and limit in minor units,
+// or null when the account has none. `spend` is the newer shape; `extra_usage` is read when spend
+// is missing or no longer has the fields read here. The API is experimental: anything unexpected
+// gives null, and the footer then shows no row for it.
+function claudeSpend(value) {
+  const limits = value?.rate_limits;
+  const extra = limits?.extra_usage;
+  const reached = extra?.spend_limit_reached === true;
+  const spend = limits?.spend;
+  if (spend && typeof spend === 'object') {
+    if (spend.enabled === false) return null;
+    const { used, limit } = spend;
+    const currencies = [...new Set([used?.currency, limit?.currency].filter((currency) => currency != null))];
+    const result = spend.enabled === true && currencies.length < 2 && spendLimit(used?.amount_minor, used?.exponent,
+      limit?.amount_minor, limit?.exponent, currencies[0] ?? null, reached);
+    if (result) return result;
+  }
+  if (extra?.is_enabled !== true) return null;
+  return spendLimit(extra.used_credits, extra.decimal_places, extra.monthly_limit, extra.decimal_places, extra.currency ?? null, reached);
 }
 
 function usageError(category) {
@@ -106,7 +142,7 @@ function readUsage(agent, { extensionsDir, cwd, signal, resolve = resolveAgentCl
           send({ type: 'control_request', request_id: 'quota', request: { subtype: 'get_usage', skip_behaviors: true } });
         } else {
           if (response.response?.rate_limits_available !== true) return finish('quota-read');
-          finish(null, { windows: claudeWindows(response.response, now()) });
+          finish(null, { windows: claudeWindows(response.response, now()), spend: claudeSpend(response.response) });
         }
       }
     }
@@ -132,4 +168,4 @@ function readUsage(agent, { extensionsDir, cwd, signal, resolve = resolveAgentCl
   });
 }
 
-module.exports = { REFRESH_EVERY, claudeWindows, readUsage };
+module.exports = { REFRESH_EVERY, claudeSpend, claudeWindows, readUsage };

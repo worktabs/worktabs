@@ -2,9 +2,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter } = require('node:events');
 const { PassThrough, Writable } = require('node:stream');
-const { readUsage, claudeWindows } = require('../src/agents/usage-refresh');
+const path = require('node:path');
+const { readUsage, claudeSpend, claudeWindows } = require('../src/agents/usage-refresh');
 const { CodexUsageTracker } = require('../src/codex/codex-usage');
 const { UsagePolling } = require('../src/agents/usage-polling');
+const { UsageTracker } = require('../src/agents/usage');
+const { tempDir } = require('./support');
 
 const NOW = Date.UTC(2026, 9, 10, 7);
 const RESET = NOW / 1000 + 3600;
@@ -175,6 +178,59 @@ test('Claude sends only control requests, disables hooks/tools/MCP and projects 
   assert.equal(result.windows.seven_day.utilization, 0);
   assert.doesNotMatch(JSON.stringify(result), /private|dollars|session|behaviors/);
   assert.equal(fixture.killed, true);
+});
+
+test('a Claude Enterprise read has no window but a monthly spend limit, which reaches the footer as a Month row', async (t) => {
+  // The get_usage response an Enterprise user shared (issue #51).
+  const enterprise = require('./fixtures/claude-usage-enterprise.json');
+  const answer = () => connection('claude', (request) => request.request_id === 'quota' ? enterprise
+    : { type: 'control_response', response: { subtype: 'success', request_id: 'init', response: {} } });
+  const fixture = answer();
+  const result = await fixture.read();
+  assert.deepEqual(result, { windows: {}, spend: { used: 9, limit: 10000, places: 2, currency: 'USD', reached: false } });
+  assert.equal(fixture.killed, true);
+
+  const usage = new UsageTracker(path.join(tempDir(t), 'usage.json')), logs = [];
+  const polling = new UsagePolling({ usage, codexUsage: new CodexUsageTracker(), enabled: () => ['claude'], options: () => ({}),
+    now: () => NOW, changed: () => {}, log: (record) => logs.push(record), read: (_agent, options) => answer().read(options) });
+  await polling.refresh('claude');
+  const view = usage.providerView(NOW);
+  assert.equal(view.status, '');
+  assert.deepEqual(view.windows.map((row) => [row.label, row.percent, row.level, row.detail]), [['Month', 0, 'ok', '$0.09 / $100']]);
+  assert.deepEqual([logs.at(-1).outcome, logs.at(-1).category], ['success', 'spend-only']);
+});
+
+test('the spend limit comes from spend, or from extra_usage when spend is missing or changed', () => {
+  const minor = (amount_minor, exponent = 2, currency = 'USD') => ({ amount_minor, currency, exponent });
+  const spend = { used: minor(9), limit: minor(10000), percent: 0, severity: 'normal', enabled: true };
+  const extra = { is_enabled: true, monthly_limit: 5000, used_credits: 4500, currency: 'USD', decimal_places: 2, spend_limit_reached: false };
+  const read = (limits) => claudeSpend({ rate_limits: limits });
+  const usd = (used, limit, reached = false) => ({ used, limit, places: 2, currency: 'USD', reached });
+  assert.deepEqual(read({ spend, extra_usage: extra }), usd(9, 10000));
+  assert.deepEqual(read({ spend: null, extra_usage: extra }), usd(4500, 5000));
+  assert.deepEqual(read({ extra_usage: { ...extra, spend_limit_reached: true } }), usd(4500, 5000, true));
+  assert.deepEqual(read({ spend, extra_usage: { ...extra, spend_limit_reached: true } }), usd(9, 10000, true));
+  // Fields that have changed shape fall back to extra_usage.
+  for (const changed of [{ ...spend, used: 9 }, { ...spend, limit: { amount: 100 } }, { ...spend, enabled: 'yes' },
+    { ...spend, used: minor(9, 2, 'EUR') }, { ...spend, used: minor('9') }]) {
+    assert.deepEqual(read({ spend: changed, extra_usage: extra }), usd(4500, 5000));
+  }
+  // Amounts with different places are shown with the larger.
+  assert.deepEqual(read({ spend: { ...spend, used: minor(1, 0) } }), usd(100, 10000));
+  assert.deepEqual(read({ spend: { ...spend, used: { amount_minor: 9, exponent: 2 }, limit: { amount_minor: 10000, exponent: 2 } } }),
+    { used: 9, limit: 10000, places: 2, currency: null, reached: false });
+  // No row: turned off, no limit, or nothing that can be read.
+  assert.equal(read({ spend: { ...spend, enabled: false }, extra_usage: extra }), null);
+  assert.equal(read({ spend: { ...spend, limit: null } }), null);
+  assert.equal(read({ spend: { ...spend, limit: minor(0) } }), null);
+  assert.equal(read({ extra_usage: { ...extra, is_enabled: false } }), null);
+  assert.equal(read({ extra_usage: { ...extra, monthly_limit: null } }), null);
+  assert.equal(read({ extra_usage: { ...extra, used_credits: null } }), null);
+  assert.equal(read({ extra_usage: { ...extra, decimal_places: undefined } }), null);
+  assert.equal(read({ extra_usage: { ...extra, currency: 'dollars' } }), null);
+  assert.equal(read({ extra_usage: { ...extra, used_credits: 1.5 } }), null);
+  assert.equal(read({}), null);
+  assert.equal(claudeSpend(null), null);
 });
 
 test('quota projection rejects expired, missing and invalid windows', () => {

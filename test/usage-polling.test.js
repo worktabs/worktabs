@@ -212,3 +212,29 @@ test('diagnostic failures cannot interrupt recovery or expose raw failure catego
   await polling.refresh('codex');
   assert.equal(polling.reads.size, 0);
 });
+
+test('a Claude read that works but finds no window is logged as such, not as unavailable', async (t) => {
+  const { UsageTracker } = require('../src/agents/usage');
+  const { tempDir } = require('./support');
+  const usage = new UsageTracker(require('node:path').join(tempDir(t), 'usage.json')), logs = [];
+  let finish;
+  const polling = new UsagePolling({ usage, codexUsage: new CodexUsageTracker(), enabled: () => ['claude'], options: () => ({}),
+    now: () => NOW, changed: () => {}, log: (record) => logs.push(record), read: () => new Promise((resolve, reject) => { finish = { resolve, reject }; }) });
+  const reset = NOW / 1000 + 3600;
+  const read = async (result) => {
+    const pending = polling.refresh('claude');
+    const during = usage.providerView(NOW).status;
+    if (result instanceof Error) finish.reject(result);
+    else finish.resolve(result);
+    await pending;
+    return [during, usage.providerView(NOW).status, logs.at(-1).outcome, logs.at(-1).category];
+  };
+  assert.deepEqual(await read({ windows: {}, spend: null }), ['Waiting for refresh', 'No 5-hour or weekly limit', 'success', 'no-windows']);
+  // That is known, so the next read does not take it away while it runs.
+  assert.deepEqual(await read({ windows: {}, spend: { used: 1, limit: 100, places: 2, currency: 'USD', reached: false } }),
+    ['No 5-hour or weekly limit', '', 'success', 'spend-only']);
+  assert.deepEqual(await read({ windows: { five_hour: { utilization: 0.5, resetsAt: reset } } }), ['', '', 'success', '']);
+  assert.equal(usage.spend, null);
+  assert.deepEqual(await read(Object.assign(new Error('private'), { category: 'quota-read' })), ['', '', 'failed', 'quota-read']);
+  assert.equal(usage.status, 'Usage unavailable');
+});

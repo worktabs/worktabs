@@ -93,7 +93,7 @@ More: [usage.md, "Repositories not cloned"](usage.md#repositories-not-cloned).
 
 ![The bottom of the sidebar: "Claude · Used" with "5 hours" 42% and "Week" 18%, and "Codex · Used" with "5 hours" 27% and "Week" 64%, each with its reset time](images/features/usage.png)
 
-- See how much of Claude's 5-hour limit and weekly limit you have used, and when each resets.
+- See how much of Claude's 5-hour limit and weekly limit you have used, and when each resets. Accounts with a monthly spend limit, such as Claude Enterprise accounts, see how much of it they have spent.
 - With Codex enabled, see its limits under Claude's, in a section of its own. Codex reports its own windows, such as "5 hours" and "Week".
 - Hover over a row for the reset date and time and when the value was received.
 

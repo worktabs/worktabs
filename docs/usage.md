@@ -339,8 +339,12 @@ The bottom of the sidebar labels each provider separately. Both Claude and Codex
 - Hover over a row to see the reset date and time and when the value was received.
 - Worktabs reads usage at startup and every 5 minutes, even without an active conversation. Responses in a Worktabs tab also update it immediately. The background read uses the installed extension's CLI and the account signed in on this computer; it sends no message to a model.
 - Values are not yet received from Claude in WSL tabs (the WSL wrapper replaces itself with claude, so it cannot see the output). Usage is per account, so if you use Claude in a Windows tab, that value shows.
+- Accounts with a monthly spend limit, such as Claude Enterprise accounts, also get a **Month** row: how much of the limit has been spent, with the amounts (such as "$0.09 / $100") where a window's reset time goes. Hover over it for the exact amounts. The limit's reset time is not reported, so none is shown. Pro and Max accounts with extra usage turned on may get the row too.
+  - The Month row comes only from the background read, so it can be up to 5 minutes old. Responses in a tab do not change it.
+  - Its bar turns red from 80%, as a window's does, and also when the account reports that the limit is reached.
 - The last value is kept in `usage.json` in the data folder. Values older than 15 minutes become unknown; expired limits are removed. The Claude section stays visible while enabled, with "Waiting for refresh" or "Usage unavailable" when no current value is available.
-- Background reads use Claude's experimental usage control API. Incompatible versions, API-key accounts, missing authentication or network failures show unavailable usage and retry on the next refresh.
+- Some accounts, such as Claude Enterprise accounts, have no 5-hour or weekly limit. When a read works but reports neither those windows nor a monthly spend limit, the section says "No 5-hour or weekly limit". "Usage unavailable" is only for reads that failed.
+- Background reads use Claude's experimental usage control API. Incompatible versions, API-key accounts, missing authentication or network failures show unavailable usage and retry on the next refresh. If the API changes the fields of the monthly spend limit, the Month row goes away rather than showing a wrong value.
 
 ## Codex usage
 
