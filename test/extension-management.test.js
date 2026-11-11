@@ -336,7 +336,8 @@ test('restoring the previous version brings back the pack members too, with thei
 test('the extension table offers Open VSX for imports and for Codex, and names the Open VSX source', () => {
   const { service, records } = setup({ openVsx: fakeOpenVsx() });
   const rows = () => Object.fromEntries(service.extensionState().rows.map((row) => [row.id, [row.source, row.openVsx]]));
-  assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Import required', true] });
+  // Not there yet: taken from Open VSX while Codex is enabled (#50), or at once with the action.
+  assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Open VSX', true] });
   records.push({ id: 'openai.chatgpt', name: 'Codex', version: '1', source: { kind: 'openvsx', location: 'https://open-vsx.org/extension/openai/chatgpt' } },
     { id: 'acme.tool', name: 'Tool', version: '1', source: { kind: 'vscode' } });
   assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Open VSX', false], 'acme.tool': ['VS Code', true] });
@@ -357,4 +358,114 @@ test('a pack member follows its pack: it has no actions of its own, and neither 
   }
   await assert.rejects(service.rollbackExtension('openai.codex-audio', 'win32-x64'), /Codex Audio comes with Codex\. Restore Codex instead/);
   await assert.rejects(service.useOpenVsx(['openai.codex-audio']), /comes with Codex\. Take Codex from Open VSX instead/);
+});
+
+// ---- Codex from Open VSX by default (#50)
+
+// A store whose commits become records, so that ensureCodex sees what it took.
+function codexSetup(options = {}) {
+  const codex = release('openai.chatgpt', '26.1106.51428', ['openai.codex-audio']);
+  const openVsx = fakeOpenVsx({ latest: { 'openai.chatgpt': codex }, versions: { 'openai.codex-audio@26.1106.51428': release('openai.codex-audio', '26.1106.51428') }, ...options.openVsx });
+  const context = openVsxSetup({ openVsx, sleep: async () => {}, ...options.setup });
+  context.importer.commit = (target, next, previous) => {
+    context.calls.push(['commit', target, next, previous]);
+    for (const record of next) {
+      const at = context.records.findIndex((entry) => entry.id === record.id);
+      if (at >= 0) context.records.splice(at, 1);
+      context.records.push({ ...record, target });
+    }
+  };
+  return { ...context, openVsx };
+}
+
+// Runs the batch the service scheduled, once it has.
+async function runScheduled(scheduled) {
+  for (let i = 0; i < 50 && !scheduled.length; i++) await new Promise((resolve) => setImmediate(resolve));
+  await scheduled.shift()();
+}
+
+test('Codex is taken from Open VSX only when it is enabled and the target has none, and callers share one take', async () => {
+  const { service, scheduled, calls, openVsx, config, records } = codexSetup();
+  config.agents = ['claude'];
+  await service.ensureCodex();
+  assert.equal(openVsx.asked.length, 0);
+  config.agents = ['claude', 'codex'];
+  const first = service.ensureCodex();
+  const second = service.ensureCodex();
+  await runScheduled(scheduled);
+  await Promise.all([first, second]);
+  assert.deepEqual(calls.filter(([kind]) => kind === 'commit').map(([, target, next]) => [target, next.map((record) => record.id)]), [['win32-x64', ['openai.codex-audio', 'openai.chatgpt']]]);
+  assert.equal(scheduled.length, 0);
+  assert.equal(service.hasCodex('win32-x64'), true);
+  await service.ensureCodex();
+  assert.equal(openVsx.asked.filter(([kind]) => kind === 'latest').length, 1);
+  // An imported Codex keeps its source; one installed before snapshots keeps running as it is.
+  records.splice(0);
+  records.push({ id: 'openai.chatgpt', version: '1', source: { kind: 'vscode' } });
+  await service.ensureCodex();
+  const legacy = codexSetup({ setup: { localExtensions: () => [{ id: 'openai.chatgpt', version: '1' }] } });
+  await legacy.service.ensureCodex();
+  assert.equal(legacy.openVsx.asked.length, 0);
+});
+
+test('a failed take says why, a later call tries again, and updates on offer stay on offer after a take', async () => {
+  const failing = codexSetup({ openVsx: { fail: 'download openai.chatgpt' } });
+  const attempt = failing.service.ensureCodex();
+  await runScheduled(failing.scheduled);
+  await assert.rejects(attempt, /connection reset\. The previous versions stay\./);
+  const retry = failing.service.ensureCodex();
+  await runScheduled(failing.scheduled);
+  await assert.rejects(retry, /connection reset/);
+  assert.equal(failing.openVsx.asked.filter(([kind]) => kind === 'latest').length, 2);
+
+  const { service, scheduled, coordinator } = codexSetup();
+  const offered = [{ kind: 'extension', id: 'anthropic.claude-code', from: '1', to: '2' }];
+  coordinator.report({ status: 'available', items: offered });
+  const take = service.ensureCodex();
+  await runScheduled(scheduled);
+  await take;
+  assert.deepEqual(coordinator.state, { status: 'available', items: offered });
+});
+
+test('Codex for a WSL target is prepared without waiting for the tabs here, and another update is waited for', async () => {
+  let reads = 0;
+  const { service, scheduled, calls, coordinator } = codexSetup();
+  coordinator.deps.risks = async () => { if (++reads > 20) throw new Error('waited for the tabs'); return { busy: ['busy tab'] }; };
+  const take = service.ensureCodex('linux-x64');
+  await runScheduled(scheduled);
+  await take;
+  assert.equal(reads, 0);
+  assert.equal(calls.some(([kind]) => ['install', 'probe'].includes(kind)), false);
+  assert.deepEqual(calls.filter(([kind]) => kind === 'commit').map(([, target]) => target), ['linux-x64']);
+
+  const waiting = codexSetup({ setup: { sleep: () => new Promise((resolve) => setImmediate(resolve)) } });
+  waiting.coordinator.report({ status: 'applying', items: [] });
+  const later = waiting.service.ensureCodex();
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(waiting.openVsx.asked.length, 0);
+  waiting.coordinator.report({ status: 'done', items: [] });
+  await runScheduled(waiting.scheduled);
+  await later;
+  assert.equal(waiting.service.hasCodex('win32-x64'), true);
+});
+
+test('a WSL start does not wait for Codex while another update runs, which may wait for that start', async () => {
+  const { service, scheduled, coordinator, openVsx } = codexSetup({ setup: { sleep: () => new Promise((resolve) => setImmediate(resolve)) } });
+  coordinator.report({ status: 'applying', items: [] });
+  // Resolves at once; the take runs after the other update. A second WSL start of the same
+  // target does not join that waiting take either.
+  await service.ensureCodex('linux-x64', { whenIdle: true });
+  await service.ensureCodex('linux-x64', { whenIdle: true });
+  assert.equal(service.hasCodex('linux-x64'), false);
+  assert.equal(openVsx.asked.length, 0);
+  coordinator.report({ status: 'done', items: [] });
+  await runScheduled(scheduled);
+  for (let i = 0; i < 5 && !service.hasCodex('linux-x64'); i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(service.hasCodex('linux-x64'), true);
+  // When nothing else runs, the start waits for the take, which does not wait for tabs.
+  const idle = codexSetup();
+  const take = idle.service.ensureCodex('linux-arm64', { whenIdle: true });
+  await runScheduled(idle.scheduled);
+  await take;
+  assert.equal(idle.service.hasCodex('linux-arm64'), true);
 });

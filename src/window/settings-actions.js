@@ -14,11 +14,13 @@ const { normalizeFolder } = require('../wsl/wsl');
 function createSettingsActions({ config, saveConfig, tabs, servers, wslServers, managedSettings,
   extensionSpecs, helperExtensions, extensionListForAgents, refreshResolvedExtensions, usagePolling,
   pushState, messageBox, showOpenDialog, openPath, repositories, refreshRepos, repoRoot,
-  rememberCandidate, readVsix, localExtensions, platform = process.platform, env = process.env,
+  rememberCandidate, readVsix, localExtensions, ensureCodex = async () => {}, platform = process.platform, env = process.env,
   exists = fs.existsSync, run = execFile, schedule = (fn) => setTimeout(fn, 0) }) {
-  // Settings that need Codex's own setup (its CLI, signing in) warn after they are taken.
+  // Settings that need Codex's own setup (its CLI, signing in) warn after they are taken, and
+  // after Codex has come from Open VSX (or failed to), so that a download is not told as missing.
   function scheduleCodexSetupWarnings(settings) {
     schedule(async () => {
+      await ensureCodex().catch(() => {});
       const warnings = await codexSetupWarnings({ ...settings, extensionsDir: config.resolvedExtensionsDir }).catch(() => []);
       if (!warnings.length) return;
       messageBox({

@@ -70,9 +70,9 @@
   "Agent for branch name suggestions": "ブランチ名を考えるエージェント",
   "Same as the default agent": "既定のエージェントと同じ",
   "Codex setup needs attention": "Codex の設定を確認してください",
-  "The Codex extension or its executable is missing or incompatible in WSL {distro}. Import a matching Linux Codex extension in Settings > Extensions, then open a tab in that distribution to install it.": "WSL の {distro} に Codex 拡張かその実行ファイルがないか、対応していません。「設定 > 拡張」で対応する Linux 向けの Codex 拡張をインポートし、そのディストリでタブを開いてインストールしてください。",
+  "The Codex extension or its executable is missing or incompatible in WSL {distro}. Enable Codex in Settings and open a tab in that distribution to install it from Open VSX, or import a matching Linux Codex extension in Settings > Extensions.": "WSL {distro} に Codex 拡張かその実行ファイルがないか、対応していません。設定で Codex を有効にしてそのディストリビューションのタブを開くと、Open VSX からインストールされます。または「設定 > 拡張」で、対応する Linux 向けの Codex 拡張をインポートしてください。",
   "The Claude Code extension or its executable is missing or incompatible in WSL {distro}. Enable Claude in Settings and open a tab in that distribution to install it, or import a matching Linux extension in Settings > Extensions.": "WSL の {distro} に Claude Code 拡張かその実行ファイルがないか、対応していません。設定で Claude を有効にし、そのディストリでタブを開いてインストールするか、「設定 > 拡張」で対応する Linux 向けの拡張をインポートしてください。",
-  "The Codex extension or its executable is missing or incompatible. Import a Codex extension for this computer in Settings > Extensions.": "Codex 拡張かその実行ファイルがないか、対応していません。「設定 > 拡張」で、このコンピュータ向けの Codex 拡張をインポートしてください。",
+  "The Codex extension or its executable is missing or incompatible. Enable Codex in Settings to install it from Open VSX, or press Use Open VSX or import Codex in Settings > Extensions.": "Codex 拡張かその実行ファイルがないか、対応していません。設定で Codex を有効にすると、Open VSX からインストールされます。または「設定 > 拡張」で「Open VSX を使う」を押すか、Codex をインポートしてください。",
   "The Claude Code extension or its executable is missing or incompatible. Enable Claude in Settings and open a tab to install it, or reinstall it through Settings > Extensions.": "Claude Code 拡張かその実行ファイルがないか、対応していません。設定で Claude を有効にし、タブを開いてインストールするか、「設定 > 拡張」から入れ直してください。",
   "{name} authentication is missing or expired. Open its chat panel in a Worktabs tab in WSL {distro} and sign in there, then retry.": "{name} の認証がないか、期限が切れています。WSL の {distro} の Worktabs のタブで {name} のチャット欄を開いてサインインし、やり直してください。",
   "{name} authentication is missing or expired. Open its chat panel in a Worktabs tab on this computer and sign in, then retry.": "{name} の認証がないか、期限が切れています。このコンピュータの Worktabs のタブで {name} のチャット欄を開いてサインインし、やり直してください。",
@@ -480,5 +480,8 @@
   "Downloading {name} {version} from Open VSX…": "Open VSX から {name} {version} をダウンロードしています…",
   "Keeping the current versions…": "今のバージョンを保存しています…",
   "{name} comes with {pack}. Restore {pack} instead.": "{name} は {pack} に含まれています。{pack} を以前のバージョンに戻してください。",
-  "{name} comes with {pack}. Take {pack} from Open VSX instead.": "{name} は {pack} に含まれています。{pack} を Open VSX から取り込んでください。"
+  "{name} comes with {pack}. Take {pack} from Open VSX instead.": "{name} は {pack} に含まれています。{pack} を Open VSX から取り込んでください。",
+  "Codex could not be installed from Open VSX.": "Open VSX から Codex をインストールできませんでした。",
+  "Installing Codex from Open VSX…": "Open VSX から Codex をインストールしています…",
+  "Could not install Codex from Open VSX: {error} Select the tab to try again, or import Codex in Settings > Extensions.": "Open VSX から Codex をインストールできませんでした: {error} タブを選ぶともう一度試します。または「設定 > 拡張」で Codex をインポートしてください。"
 }

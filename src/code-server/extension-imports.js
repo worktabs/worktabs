@@ -27,9 +27,10 @@ const parser = new XMLParser({ ignoreAttributes: false, processEntities: false }
 function localTarget() { return `${process.platform}-${process.arch}`; }
 // Why an update must wait for a tab: null, 'busy' (a turn in progress or unsaved edits), or
 // 'unobserved' (Codex has started but its proxy never reported in, so Worktabs cannot tell
-// whether it is working; only closing the tab is safe). codexActive is null when unknown.
+// whether it is working; only closing the tab is safe). codexActive is null when unknown. A start
+// still at its gates (tab.preparing) has launched nothing, and may be waiting for this update.
 function idleWaitReason(tab, { risks = [], codexActive = false } = {}) {
-  if (tab.server === 'starting') return 'busy';
+  if (tab.server === 'starting') return tab.preparing ? null : 'busy';
   if (tab.server !== 'running') return null;
   if (codexActive !== false && !tab.codexObserved) return 'unobserved';
   return risks.length ? 'busy' : null;

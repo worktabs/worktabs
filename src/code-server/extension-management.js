@@ -7,15 +7,18 @@ const imports = require('./extension-imports');
 
 const PROTECTED_IDS = ['worktabs.worktabs-helper'];
 const EXTENSION_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i;
+const CODEX = 'openai.chatgpt';
+// How long taking Codex waits for another update to end (one that waits for busy tabs can take long).
+const IDLE_WAIT = 30 * 60 * 1000;
 
 /**
  * @param {{ openVsx?: ReturnType<typeof import('./open-vsx').createOpenVsx> | null, now?: () => number,
- *   [key: string]: any }} options
+ *   sleep?: (ms: number) => Promise<any>, [key: string]: any }} options
  */
 function createExtensionManagement({ config, extensionImports, updateCoordinator, getServers,
   helperExtensions, vscodeVersion, probeInstance, refreshResolvedExtensions, setUpdate, startUpdate,
   checkError = () => '', log = (_line) => {}, openVsx = null, platform = process.platform, newKey = crypto.randomUUID,
-  schedule = (fn) => setTimeout(fn, 0), now = Date.now, localTarget = imports.localTarget,
+  schedule = (fn) => setTimeout(fn, 0), now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), localTarget = imports.localTarget,
   discoverDesktop = imports.discoverDesktop, localExtensions = imports.installedExtensions,
   validateBatch = imports.validateBatch, readVsix = imports.readVsix, applyImportBatch = imports.applyImportBatch }) {
   const extensionCandidates = new Map();
@@ -57,7 +60,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   function extensionSpecs(target = localTarget()) {
     const records = extensionImports.records(target);
     const locked = new Set(records.map((record) => record.id));
-    const configured = config.resolvedExtensions.filter((id) => !locked.has(id.toLowerCase()) && id.toLowerCase() !== 'openai.chatgpt');
+    // Codex never comes from the gallery: ensureCodex takes it from Open VSX as a snapshot.
+    const configured = config.resolvedExtensions.filter((id) => !locked.has(id.toLowerCase()) && id.toLowerCase() !== CODEX);
     return [...configured, ...records.filter((record) => !isAgentExtension(record.id) || agentExtensions(config.agents).some((id) => id.toLowerCase() === record.id)).map((record) => extensionImports.package(record)), ...helperExtensions()];
   }
 
@@ -71,7 +75,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     if (record?.source.kind === 'openvsx') return t('Open VSX');
     if (record?.source.kind === 'vscode') return t('VS Code');
     if (record) return t('VSIX file');
-    if (id === 'openai.chatgpt') return current ? t('Existing install / import updates') : t('Import required');
+    // Not there yet: Worktabs takes it from Open VSX while Codex is enabled.
+    if (id === CODEX) return current ? t('Existing install / import updates') : t('Open VSX');
     return t('Worktabs / Open VSX');
   }
 
@@ -159,6 +164,12 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   // are looked up before the update begins, so that a missing one is told to the dialog; the
   // downloads run in the update's preparation, where the side bar shows them and tabs keep running.
   async function useOpenVsx(ids, target = localTarget(), followUp = []) {
+    await takeFromOpenVsx(ids, target, followUp);
+    return { queued: true };
+  }
+
+  // useOpenVsx, resolving { done }: a promise of whether the batch succeeded.
+  async function takeFromOpenVsx(ids, target, followUp = []) {
     if (!openVsx) throw new Error(t('Downloading from Open VSX is not available.'));
     const list = typeof ids === 'string' ? [ids] : ids;
     if (!Array.isArray(list) || !list.length || list.length > 20 || list.some((id) => typeof id !== 'string' || !EXTENSION_ID.test(id))) throw new Error(t('Invalid extension selection.'));
@@ -181,8 +192,59 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     const installed = installedFor(target);
     const items = releases.map((item) => ({ kind: 'import', id: item.id, name: item.name, from: installed.find((entry) => entry.id === item.id)?.version || '', to: item.version, target }));
     const run = updateCoordinator.begin(items, t('Preparing the download from Open VSX'));
-    schedule(() => applyExtensionImports(run, (report) => stageReleases(releases, installed, target, vscode, report), target, followUp));
-    return { queued: true };
+    const done = new Promise((resolve, reject) => schedule(() => applyExtensionImports(run, (report) => stageReleases(releases, installed, target, vscode, report), target, followUp).then(resolve, reject)));
+    return { done };
+  }
+
+  // Whether `target` has Codex: a snapshot for it, or on this computer an install that no
+  // record keeps (one from before snapshots, which keeps running as it is).
+  function hasCodex(target) {
+    if (extensionImports.records(target).some((record) => record.id === CODEX)) return true;
+    return target === localTarget() && localExtensions(config.resolvedExtensionsDir).some((item) => item.id === CODEX);
+  }
+
+  const codexTakes = new Map();
+  const otherUpdate = () => staging || updateCoordinator.busy || ['preparing', 'waiting', 'applying'].includes(updateCoordinator.state.status);
+  // Takes Codex from Open VSX for `target` when Codex is enabled and the target has none, and
+  // resolves once it is there (#50). Concurrent callers share one take. Another update in
+  // progress is waited for, as only one runs at a time. Rejects with why it is not there, so
+  // that a Codex tab says so and a later start tries again.
+  // `whenIdle`: wait only for this target's own take once it runs. A WSL tab waits here in the
+  // middle of its start, and another update may wait for that start (a starting tab counts as
+  // busy, and its resume restarts tabs). A take for a Linux target never waits for tabs
+  // (shared: false), so joining one that runs is safe; one still waiting for another update, or
+  // another update running now, is left to run after it.
+  function ensureCodex(target = localTarget(), { whenIdle = false } = {}) {
+    if (!config.agents.includes('codex') || hasCodex(target)) return Promise.resolve();
+    if (!codexTakes.has(target)) {
+      const entry = { running: false, promise: null };
+      entry.promise = (async () => {
+        const deadline = now() + IDLE_WAIT;
+        while (otherUpdate()) {
+          if (now() > deadline) throw new Error(t('Another update is in progress.'));
+          await sleep(2000);
+        }
+        if (hasCodex(target)) return;
+        entry.running = true;
+        log(`taking Codex from Open VSX for ${target}`);
+        // Updates on offer stay on offer: the take reports in their place while it runs.
+        const offered = updateCoordinator.state.status === 'available' ? updateCoordinator.state.items : [];
+        const { done } = await takeFromOpenVsx([CODEX], target);
+        if (!(await done) || !hasCodex(target)) {
+          const state = updateCoordinator.state;
+          throw new Error(state.status === 'failed' && state.detail ? state.detail : t('Codex could not be installed from Open VSX.'));
+        }
+        if (offered.length && !updateCoordinator.busy) setUpdate({ status: 'available', items: offered });
+      })().finally(() => codexTakes.delete(target));
+      codexTakes.set(target, entry);
+    }
+    const entry = codexTakes.get(target);
+    // The take runs synchronously up to its first wait, so `running` is already known here.
+    if (whenIdle && !entry.running) {
+      entry.promise.catch((error) => log(`Codex for ${target} not taken: ${error.message}`));
+      return Promise.resolve();
+    }
+    return entry.promise;
   }
 
   // Downloads and stages `releases`, then checks them as an import batch is checked.
@@ -210,6 +272,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     const servers = getServers();
     const succeeded = await updateCoordinator.execute(run, {
       prepare,
+      // Linux snapshots install when a WSL tab next starts; the running tabs do not use them.
+      shared: target === localTarget(),
       applying: t('Installing the imported extensions'),
       // applyImportBatch has put the previous versions back, unless that failed too (the cause).
       failure: (error) => error.cause ? error.message : t('{error}. The previous versions stay.', { error: error.message }),
@@ -235,6 +299,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
       setUpdate({ status: 'available', items: followUp });
       await startUpdate();
     }
+    return succeeded;
   }
 
   // Newer Open VSX releases of the extensions taken from there, as update items. The members of an
@@ -278,7 +343,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     return queueExtensionImports(keys, target);
   }
 
-  return { extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, openVsxUpdates, rollbackExtension, pruneSnapshots };
+  return { extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, openVsxUpdates, rollbackExtension, pruneSnapshots, ensureCodex, hasCodex };
 }
 
 module.exports = { createExtensionManagement };

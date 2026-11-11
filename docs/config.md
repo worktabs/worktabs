@@ -31,7 +31,7 @@
 | `extensionsDir` | The extensions folder shared by all instances. If empty, `extensions` in the data folder |
 | `extensions` | Extra IDs to install from Open VSX when missing, unless locked to an import. The language pack is added automatically ([extensions.md](extensions.md)) |
 | `restrictExtensionGallery` | Disable the embedded gallery (default `true`). Worktabs manages installs and updates; this is not a security sandbox |
-| `agents` | Providers to open. `["claude"]` is the default. Use `["codex"]` or `["claude", "codex"]` after importing Codex. Claude installs from Open VSX by default |
+| `agents` | Providers to open. `["claude"]` is the default. Use `["codex"]` or `["claude", "codex"]` for Codex. Claude and Codex install from Open VSX by default |
 | `defaultAgent` | Agent opened in new tabs when more than one agent is enabled (`"claude"` or `"codex"`) |
 | `branchAgent` | Agent used for branch name suggestions (`"claude"`, `"codex"`, or `"default"` to follow `defaultAgent`) |
 | `locale` | Display language of the app and of VS Code (default: empty). Empty follows the system's preferred languages: the first of them the app has (English or Japanese), else English, and VS Code takes the same. The app's own menus, dialogs, and messages are in English or Japanese; another language (such as `de` or `zh-cn`) sets VS Code's, and the app's own show in English. The language pack VS Code needs is installed on its own |
@@ -43,7 +43,7 @@
 
 In the settings dialog, each provider has its own checkbox under "Agents to use". You can enable one or more providers, and at least one stays enabled. The default-agent and branch-name choices contain only the enabled providers.
 
-For a Codex-only example, see [config.codex.example.json](../config.codex.example.json). Import the matching Codex extension first, then enable Codex and sign in in its chat panel. To use both providers, set `agents` to `["claude", "codex"]`; choose `defaultAgent` for new tabs and `branchAgent` for suggestions. Existing tabs and conversation rows keep their provider after saving and restarting. WSL needs a matching Linux extension and its own sign-in. The [verification matrix](codex-verification.md) separates automated coverage from real-extension results.
+For a Codex-only example, see [config.codex.example.json](../config.codex.example.json). Enable Codex, wait for Worktabs to install it from Open VSX (or import a matching Codex extension), and sign in in its chat panel. To use both providers, set `agents` to `["claude", "codex"]`; choose `defaultAgent` for new tabs and `branchAgent` for suggestions. Existing tabs and conversation rows keep their provider after saving and restarting. WSL gets its own Linux extension from Open VSX when a tab of the distribution starts, and needs its own sign-in. The [verification matrix](codex-verification.md) separates automated coverage from real-extension results.
 
 **Settings > Extensions** shows sources, versions, imports, and updates. Claude's Open VSX updates are managed by Worktabs. Desktop and VSIX imports need periodic source updates and re-importing. Worktabs does not fetch them from Microsoft Marketplace ([extensions.md](extensions.md)).
 
@@ -63,7 +63,7 @@ Worktabs does not write Codex's `config.toml`. The Codex model, approval policy,
 
 Branch name suggestions use the selected provider's executable bundled in its active Worktabs extension. Neither provider needs a separate `codex` or `claude` on `PATH`. Enable Claude and open a tab to install its Open VSX extension. For Codex, import an extension for this computer through **Settings > Extensions**. Updates, re-imports, and restores also replace the executable used by subsequent suggestions ([extensions.md](extensions.md)).
 
-For a WSL repository, suggestions use the Linux extension installed in that repository's distribution under `~/.worktabs/extensions`. Import the matching Linux Codex extension and open a tab in the distribution to install it. Claude uses its Linux Open VSX extension there. Windows executables and Windows login credentials are not used for WSL suggestions.
+For a WSL repository, suggestions use the Linux extension installed in that repository's distribution under `~/.worktabs/extensions`. Open a tab in the distribution to install Codex there from Open VSX, or import the matching Linux Codex extension first. Claude uses its Linux Open VSX extension there. Windows executables and Windows login credentials are not used for WSL suggestions.
 
 The add-worktree dialog explains how to fix missing extension files and how to sign in when authentication is missing or expired. Sign in through the provider's chat panel in a local Worktabs tab, or in a tab in the matching WSL distribution. Other execution failures keep the CLI's error message. Startup and settings-save warnings for Codex branch suggestions check the local extension executable; the suggestion checks the environment of the selected repository.
 

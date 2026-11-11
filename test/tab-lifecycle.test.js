@@ -82,14 +82,48 @@ test('early tabs wait for shared preparation before selecting a server manager',
   assert.equal(f.starts.length, 0);
   assert.equal(a.server, 'starting');
   assert.equal(b.server, 'starting');
+  // At the gate, nothing is launched yet: updates do not wait for these starts.
+  assert.deepEqual([a.preparing, b.preparing], [true, true]);
   assert.equal(f.lifecycle.activeId, b.id);
   gate.complete();
   await Promise.all([first, second]);
   assert.equal(managers, 2);
   assert.equal(f.starts.length, 2);
+  assert.deepEqual([a.preparing, b.preparing], [false, false]);
   assert.equal(a.server, 'running');
   assert.equal(b.server, 'running');
   assert.equal(f.lifecycle.activeId, b.id);
+});
+
+test('a start whose gate opens during an update switch leaves the start to the update, which starts it after', async () => {
+  const { UpdateCoordinator } = require('../src/code-server/update-coordinator');
+  const gate = new StartupGate();
+  const f = setup({ prepare: () => gate.wait() });
+  const tabs = new Map();
+  const coordinator = new UpdateCoordinator({
+    tabs: () => tabs, changed: () => {}, busyError: () => 'busy', startingError: () => 'a tab started',
+    waitDetail: () => '', resumeDetail: () => '', risks: async () => ({ busy: [] }), sleep: async () => {},
+    pause: () => {}, start: (tab) => f.lifecycle.start(tab), log: () => {},
+  });
+  f.deps.canStart = (tab) => coordinator.canStart(tab);
+  const a = f.open('a', { start: true, activate: true });
+  tabs.set(a.id, a);
+  const pending = f.lifecycle.start(a);
+  await flush();
+  // The gate opens in the middle of the switch (as Codex's install does for a Codex tab).
+  const done = await coordinator.execute(coordinator.begin([{ kind: 'import' }], 'preparing'), {
+    applying: 'applying', failure: (error) => error.message,
+    apply: async () => {
+      gate.complete();
+      await pending;
+      assert.equal(f.starts.length, 0);
+      assert.equal(a.server, 'stopped');
+      return { status: 'done', detail: '' };
+    },
+  });
+  assert.equal(done, true);
+  assert.equal(f.starts.length, 1);
+  assert.equal(a.server, 'running');
 });
 
 test('close and reopen cancel preparation waits without holding the replacement', async () => {
@@ -141,6 +175,22 @@ test('preparation failure marks waiting and later tabs as errors without startin
   }
   assert.equal(starts.length, 0);
   assert.ok(!events.some(([name]) => name === 'stop'));
+});
+
+test('a gate that may pass next time leaves the tab stopped, and selecting it tries again', async () => {
+  let attempts = 0;
+  const { lifecycle, starts, open } = setup({ prepare: async () => {
+    if (++attempts === 1) throw Object.assign(new Error('Could not install Codex from Open VSX: offline'), { retryable: true });
+  } });
+  const tab = open('a', { start: true });
+  await lifecycle.start(tab);
+  assert.equal(tab.server, 'stopped');
+  assert.match(tab.error, /offline/);
+  lifecycle.activate(tab.id);
+  await lifecycle.starts.get(tab.id);
+  assert.equal(attempts, 2);
+  assert.equal(starts.length, 1);
+  assert.equal(tab.server, 'running');
 });
 
 test('saved tabs, history and ports survive opening and closing tabs during preparation', async () => {

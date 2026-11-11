@@ -36,7 +36,7 @@ test('codexSetupWarnings checks setup only when Codex is selected for branch sug
   const warnings = await codexSetupWarnings({ agents: ['codex'], defaultAgent: 'codex', branchAgent: 'default', resolve });
   assert.equal(calls, 1);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /Import a Codex extension.*Settings > Extensions/);
+  assert.match(warnings[0], /install it from Open VSX.*Settings > Extensions/);
 });
 
 test('codexSetupWarnings stays quiet when the extension executable is available', async () => {

@@ -116,7 +116,7 @@ test('WSL reads and checks only the selected distribution Linux payload, before 
 test('setup warnings check the active executable without invoking a PATH CLI', async (t) => {
   const extensionsDir = tempDir(t);
   const settings = { agents: ['codex'], defaultAgent: 'codex', branchAgent: 'default', extensionsDir };
-  assert.match((await codexSetupWarnings(settings))[0], /Import a Codex extension.*Settings > Extensions/);
+  assert.match((await codexSetupWarnings(settings))[0], /install it from Open VSX.*Settings > Extensions/);
   const binary = await install(extensionsDir, 'codex', '1');
   assert.deepEqual(await codexSetupWarnings(settings), []);
   fs.unlinkSync(binary);

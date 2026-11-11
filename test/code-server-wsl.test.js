@@ -42,6 +42,19 @@ test('WSL start keeps the same owner when a taken port needs a retry', async () 
   assert.deepEqual(calls[1][4], new Set([4200]));
 });
 
+test('WSL readies the snapshots of its architecture after it is prepared and before the extensions sync', async () => {
+  const calls = [];
+  const manager = {
+    target: 'linux-arm64', stop: () => {}, ready: () => true,
+    prepare: async () => calls.push('prepare'), syncExtensions: async () => calls.push('sync'), launch: async () => ({ port: 4300 }),
+    beforeSync: async (target, onProgress) => { calls.push(`before ${target}`); onProgress('Installing Codex from Open VSX…'); },
+  };
+  const progress = [];
+  await WslCodeServerManager.prototype.start.call(manager, 'tab', '\\\\wsl.localhost\\Ubuntu\\home\\me\\repo', 4200, { onProgress: (text) => progress.push(text) });
+  assert.deepEqual(calls, ['prepare', 'before linux-arm64', 'sync']);
+  assert.ok(progress.includes('Installing Codex from Open VSX…'));
+});
+
 test('WSL exits carry the start owner and ignore replaced instance keys', () => {
   const manager = new InstanceManager();
   const owner = {};

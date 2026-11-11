@@ -108,7 +108,28 @@ class TabLifecycle {
       // Managers stop by tab ID. Do not let an old start's cleanup stop its replacement.
       await previous;
       if (!this.currentRun(run)) return;
-      await Promise.race([this.deps.prepare?.(tab), run.cancelled]);
+      // Until it passes the gates (start-up, Codex from Open VSX), a start has launched nothing and
+      // uses no extensions, so an update need not wait for it (idleWaitReason). Codex's install is
+      // an update, and a Codex tab waits for it here.
+      tab.preparing = true;
+      run.gated = true;
+      try {
+        await Promise.race([this.deps.prepare?.(tab), run.cancelled]);
+      } finally {
+        tab.preparing = false;
+      }
+      run.gated = false;
+      if (!this.currentRun(run)) return;
+      // A gate can open while an update switches the extensions; the update starts the tab again
+      // once it is done (canStart remembers it). Stopped, so that start() takes it then, or when
+      // the tab is selected.
+      if (!this.deps.canStart(tab)) {
+        this.runs.delete(tab.id);
+        run.cancel();
+        tab.server = 'stopped';
+        this.notify();
+        return;
+      }
       if (!this.currentRun(run)) return;
       await Promise.race([tab.repoLookup, run.cancelled]);
       if (!this.currentRun(run)) return;
@@ -137,7 +158,9 @@ class TabLifecycle {
       this.runs.delete(tab.id);
       run.cancel();
       this.cleanup(tab, true);
-      tab.server = 'error';
+      // A gate that may pass next time (`retryable`: Codex could not come from Open VSX) leaves the
+      // tab stopped, which selecting it starts again; other failures are errors.
+      tab.server = run.gated && error.retryable ? 'stopped' : 'error';
       tab.error = error.message;
       this.deps.placeholder(tab, 'error', error.message);
       this.notify();

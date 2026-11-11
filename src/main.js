@@ -156,6 +156,20 @@ function tabAgent(tab) {
   return normalizeAgent(tab?.provider, config.agents, config.defaultAgent);
 }
 
+// A Codex tab on this computer starts once Codex is there, taken from Open VSX when it is not
+// (#50); other tabs do not wait. WSL tabs get theirs when the distribution syncs (beforeSync).
+// A failure stops only this start: selecting the tab tries again.
+async function codexReady(tab) {
+  if (tabAgent(tab) !== 'codex' || parseWslPath(tab.folder) || hasCodex(localTarget())) return;
+  showTabPlaceholder(tab, 'starting', t('Installing Codex from Open VSX…'));
+  try {
+    await ensureCodex(localTarget());
+  } catch (error) {
+    // Retryable: the lifecycle leaves the tab stopped, and selecting it starts (and takes) again.
+    throw Object.assign(new Error(t('Could not install Codex from Open VSX: {error} Select the tab to try again, or import Codex in Settings > Extensions.', { error: error.message }), { cause: error }), { retryable: true });
+  }
+}
+
 function managedSettings() {
   return { ...managedAgentSettings({ agents: config.agents, wrapper: WRAP_EXE, permissionMode: config.permissionMode, locale: config.resolvedLocale }), 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false };
 }
@@ -422,7 +436,7 @@ function tabDependencies() {
     },
     lookupBranch: (tab) => currentBranch(tab.folder),
     used: (tab) => tabStore.markTabUsed(tab),
-    prepare: () => startup.wait(),
+    prepare: (tab) => startup.wait().then(() => codexReady(tab)),
     managerFor: (tab) => codeServers.forFolder(tab.folder),
     canStart: (tab) => updateCoordinator.canStart(tab),
     startOptions: (tab) => ({ shareSettings: sharedTabSettings(tab) }),
@@ -473,6 +487,15 @@ function createWslServers(distro) {
     download: (options) => downloadRelease({ dataDir, ...options }),
     extensions: [...config.resolvedExtensions, ...helperExtensions()],
     extensionSpecs: (target) => extensionSpecs(target),
+    // The distribution's own Linux Codex from Open VSX. A failure does not stop the tab (it may be
+    // a Claude one); the Codex chat check tells it, and the next start tries again. While another
+    // update runs, the start does not wait (that update may wait for this start): the take runs
+    // after it, and the distribution installs Codex at its next start.
+    beforeSync: async (target, onProgress) => {
+      if (!config.agents.includes('codex') || hasCodex(target)) return;
+      onProgress(t('Installing Codex from Open VSX…'));
+      await ensureCodex(target, { whenIdle: true }).catch((error) => logUpdate(`Codex for ${target} not taken: ${error.message}`));
+    },
     unpinnedExtensions: ['anthropic.claude-code'],
     restrictExtensionGallery: config.restrictExtensionGallery,
     windowsExtensionsDir: config.resolvedExtensionsDir,
@@ -605,6 +628,7 @@ const probeInstance = createUpdateProbe({
 const {
   coordinator: updateCoordinator, setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
   updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, rollbackExtension, pruneSnapshots,
+  ensureCodex, hasCodex,
 } = createAppUpdates({
   config, saveConfig, dataDir, tabs, servers: codeServers.local, wslServers: codeServers.wsl, extensionImports,
   pause: (tab) => {
@@ -736,7 +760,7 @@ async function runningDistros() {
 // Settings, the repositories added by hand, and extensions picked by hand.
 const { saveSettings, scheduleCodexSetupWarnings, addRepository, openConfigFile, browseExtensionSource, openDesktopCode } = createSettingsActions({
   config, saveConfig, tabs, servers: codeServers.local, wslServers: codeServers.wsl, managedSettings,
-  extensionSpecs, helperExtensions, extensionListForAgents, refreshResolvedExtensions,
+  extensionSpecs, helperExtensions, extensionListForAgents, refreshResolvedExtensions, ensureCodex,
   usagePolling, pushState, messageBox, showOpenDialog: (options) => dialog.showOpenDialog(win, options),
   openPath: (target) => shell.openPath(target), repositories, refreshRepos, repoRoot,
   rememberCandidate, readVsix, localExtensions,
@@ -1172,6 +1196,8 @@ app.whenReady().then(async () => {
   // Even when code-server could not start: a new version may be what fixes that.
   startSelfUpdates();
   if (!servers) return;
+  // Codex comes from Open VSX in the background; only Codex tabs wait for it (codexReady).
+  ensureCodex().catch((error) => logUpdate(`Codex not taken: ${error.message}`));
   usagePolling.refreshAll();
   usageRefreshTimer = setInterval(() => usagePolling.refreshAll(), REFRESH_EVERY);
   // Clicks on notifications from before the app (re)started, once their tabs are back; one that

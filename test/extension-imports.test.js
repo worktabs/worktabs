@@ -31,6 +31,9 @@ const options = { target: 'win32-x64', vscode: '1.131.0' };
 
 test('updates wait for startup, work, edits, or a Codex that Worktabs cannot see', () => {
   assert.equal(idleWaitReason({ server: 'starting' }), 'busy');
+  // Still at its gates, such as a Codex tab waiting for Codex from Open VSX: nothing launched yet,
+  // and the update may be what it waits for.
+  assert.equal(idleWaitReason({ server: 'starting', preparing: true }), null);
   assert.equal(idleWaitReason({ server: 'running' }, { risks: ['unsaved'] }), 'busy');
   assert.equal(idleWaitReason({ server: 'running' }), null);
   assert.equal(idleWaitReason({ server: 'stopped' }, { risks: ['unsaved'], codexActive: true }), null);

@@ -6,7 +6,7 @@ This is the acceptance matrix for Codex support, including thread history and fi
 
 ## Setup
 
-1. Import a permitted Codex desktop extension or VSIX through **Settings > Extensions**. Match the computer's platform and architecture. For WSL, import a Linux version and open a tab in the matching distribution so Worktabs installs it there.
+1. Enable Codex in **Settings**, so that Worktabs installs it from Open VSX, or import a permitted Codex desktop extension or VSIX through **Settings > Extensions**, for the computer's platform and architecture. For WSL, open a tab in the matching distribution so Worktabs installs the Linux version there.
 2. Enable **Codex** in **Settings > General**. For coexistence, leave **Claude Code** enabled too. Choose the default agent for new tabs and the agent for branch suggestions. [config.codex.example.json](../config.codex.example.json) is a Codex-only example with manual approvals.
 3. Sign in through the Codex chat panel in that environment. Worktabs uses the extension's bundled executable; a separate CLI on PATH is not needed. Windows and WSL have separate extension installations and authentication.
 4. Record the Worktabs commit, OS, architecture, WSL distribution/network mode, code-server version, both extension versions, provider choices, and authentication method. Do not attach credentials or authentication responses.
