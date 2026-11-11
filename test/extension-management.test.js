@@ -344,3 +344,17 @@ test('the extension table offers Open VSX for imports and for Codex, and names t
   assert.equal(service.extensionState('linux-x64').rows.find((row) => row.id === 'openai.chatgpt').openVsx, true);
   assert.equal(setup().service.extensionState().rows.some((row) => row.openVsx), false);
 });
+
+test('a pack member follows its pack: it has no actions of its own, and neither restoring nor taking it alone is allowed', async () => {
+  const { service, records } = setup({ openVsx: fakeOpenVsx() });
+  records.push(
+    { id: 'openai.chatgpt', name: 'Codex', version: '2', source: { kind: 'openvsx' }, bundled: ['openai.codex-audio'], previous: { id: 'openai.chatgpt', version: '1', source: { kind: 'openvsx' } } },
+    { id: 'openai.codex-audio', name: 'Codex Audio', version: '2', source: { kind: 'openvsx' }, previous: { id: 'openai.codex-audio', version: '1', source: { kind: 'openvsx' } } },
+  );
+  for (const target of ['win32-x64', 'linux-x64']) {
+    const audio = service.extensionState(target).rows.find((row) => row.id === 'openai.codex-audio');
+    assert.deepEqual([audio.previous, audio.openVsx], [false, false]);
+  }
+  await assert.rejects(service.rollbackExtension('openai.codex-audio', 'win32-x64'), /Codex Audio comes with Codex\. Restore Codex instead/);
+  await assert.rejects(service.useOpenVsx(['openai.codex-audio']), /comes with Codex\. Take Codex from Open VSX instead/);
+});

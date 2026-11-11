@@ -478,5 +478,7 @@
   "Preparing the download from Open VSX": "Open VSX からのダウンロードを準備中",
   "Downloading {name} {version} from Open VSX… {progress}": "Open VSX から {name} {version} をダウンロードしています… {progress}",
   "Downloading {name} {version} from Open VSX…": "Open VSX から {name} {version} をダウンロードしています…",
-  "Keeping the current versions…": "今のバージョンを保存しています…"
+  "Keeping the current versions…": "今のバージョンを保存しています…",
+  "{name} comes with {pack}. Restore {pack} instead.": "{name} は {pack} に含まれています。{pack} を以前のバージョンに戻してください。",
+  "{name} comes with {pack}. Take {pack} from Open VSX instead.": "{name} は {pack} に含まれています。{pack} を Open VSX から取り込んでください。"
 }

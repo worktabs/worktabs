@@ -41,7 +41,7 @@ Copying is not permission to use an extension in another application. The [VS Co
 
 - Only releases are taken, never pre-releases, and only versions whose VS Code engine requirement accepts the running code-server. Codex numbers its pre-releases above its releases (26.5xxxx and 26.1xxx), so they are told apart by Open VSX's pre-release flag, not by the version.
 - An extension built once for every platform (universal) is found too.
-- The members of an extension pack come in the same batch, at the pack's version when Open VSX has it, else at their newest release. Codex brings Codex Audio this way. They are updated and restored with the pack.
+- The members of an extension pack come in the same batch, at the pack's version when Open VSX has it, else at their newest release. Codex brings Codex Audio this way. They are updated and restored with the pack, and have no **Use Open VSX** or **Restore previous** of their own, so that restoring the pack brings back the member versions that came with it.
 - Worktabs downloads the files itself, through the system proxy, and checks each against the SHA-256 that Open VSX publishes beside it. This catches a broken or cut download, not a server that sends something else.
 - The download runs before the update waits for the tabs. The sidebar's update card shows its progress, and the tabs keep running until the switch.
 - What the extension had before becomes the previous snapshot. An import stays there, so **Restore previous** goes back to it, with its recorded source. Importing again from VS Code or a VSIX replaces an Open VSX snapshot the same way.

@@ -84,6 +84,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     const sources = [...desktop.filter((item) => !item.error), ...newerImports.map((item) => item.candidate)];
     const candidates = [...new Map(sources.map((item) => [`${item.location}:${item.version}`, item])).values()].map(rememberCandidate);
     const allIds = new Set([...config.resolvedExtensions.filter((id) => !id.endsWith('.vsix')).map((id) => id.toLowerCase()), ...records.map((record) => record.id)]);
+    const members = new Set(records.flatMap((record) => record.bundled || []));
     const rows = [...allIds].map((id) => {
       const record = records.find((item) => item.id === id);
       const current = installed.find((item) => item.id === id);
@@ -91,9 +92,11 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
       // Open VSX can replace an import, and gives Codex, which the gallery install leaves out.
       // The extensions Worktabs installs from the gallery are on Open VSX already. Update checks
       // cover the Open VSX snapshots of this computer only, so a Linux one keeps the action, which
-      // takes its newest release.
-      const openVsxAction = Boolean(openVsx) && (record ? record.source.kind !== 'openvsx' || target !== localTarget() : id === 'openai.chatgpt');
-      return { id, name: record?.name || current?.name || id, version: record?.version || current?.version || '', prepared: target !== localTarget(), source: sourceLabel(id, record, current), newer: newer?.to || '', previous: Boolean(record?.previous), imported: Boolean(record), openVsx: openVsxAction, location: record?.source.location || '' };
+      // takes its newest release. A pack member has neither action: it follows its pack, so that
+      // restoring the pack restores the member version that came with it.
+      const member = members.has(id);
+      const openVsxAction = Boolean(openVsx) && !member && (record ? record.source.kind !== 'openvsx' || target !== localTarget() : id === 'openai.chatgpt');
+      return { id, name: record?.name || current?.name || id, version: record?.version || current?.version || '', prepared: target !== localTarget(), source: sourceLabel(id, record, current), newer: newer?.to || '', previous: Boolean(record?.previous) && !member, imported: Boolean(record), openVsx: openVsxAction, location: record?.source.location || '' };
     });
     const codeServerVersion = config.codeServerDir ? t('Custom (VS Code {version})', { version: vscodeVersion() }) : config.codeServerVersion;
     return { target, targets: [localTarget(), ...(platform === 'win32' ? ['linux-x64', 'linux-arm64'] : [])], rows, candidates, errors: [...desktop.filter((item) => item.error).map((item) => item.error), ...(checkError() ? [checkError()] : [])], update: updateCoordinator.state, codeServerVersion };
@@ -160,6 +163,12 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     const list = typeof ids === 'string' ? [ids] : ids;
     if (!Array.isArray(list) || !list.length || list.length > 20 || list.some((id) => typeof id !== 'string' || !EXTENSION_ID.test(id))) throw new Error(t('Invalid extension selection.'));
     if (!imports.TARGETS.includes(target)) throw new Error(t('Unsupported extension target.'));
+    // A pack member comes and goes with its pack (see rollbackExtension).
+    const records = extensionImports.records(target);
+    for (const id of list) {
+      const pack = records.find((entry) => (entry.bundled || []).includes(id.toLowerCase()));
+      if (pack) throw new Error(t('{name} comes with {pack}. Take {pack} from Open VSX instead.', { name: id, pack: pack.name }));
+    }
     assertIdle();
     const vscode = vscodeVersion();
     let releases;
@@ -253,6 +262,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   // one, keeping their recorded sources.
   async function rollbackExtension(id, target) {
     const records = extensionImports.records(target);
+    const pack = records.find((entry) => (entry.bundled || []).includes(id));
+    if (pack) throw new Error(t('{name} comes with {pack}. Restore {pack} instead.', { name: records.find((entry) => entry.id === id)?.name || id, pack: pack.name }));
     const record = records.find((entry) => entry.id === id);
     if (!record?.previous) throw new Error(t('No previous version is available.'));
     const members = (record.bundled || []).filter((member) => records.find((entry) => entry.id === member)?.previous);
