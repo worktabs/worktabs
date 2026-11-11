@@ -204,16 +204,25 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   }
 
   const codexTakes = new Map();
+  const otherUpdate = () => staging || updateCoordinator.busy || ['preparing', 'waiting', 'applying'].includes(updateCoordinator.state.status);
   // Takes Codex from Open VSX for `target` when Codex is enabled and the target has none, and
   // resolves once it is there (#50). Concurrent callers share one take. Another update in
   // progress is waited for, as only one runs at a time. Rejects with why it is not there, so
   // that a Codex tab says so and a later start tries again.
-  function ensureCodex(target = localTarget()) {
+  // `whenIdle`: resolve at once when another update runs now, leaving the take to run after it.
+  // A WSL tab waits here in the middle of its start, and an update in progress may wait for that
+  // start (a starting tab counts as busy, and its resume restarts tabs). The take for a Linux
+  // target itself never waits for tabs (shared: false), so joining it is safe.
+  function ensureCodex(target = localTarget(), { whenIdle = false } = {}) {
     if (!config.agents.includes('codex') || hasCodex(target)) return Promise.resolve();
+    if (whenIdle && !codexTakes.has(target) && otherUpdate()) {
+      ensureCodex(target).catch((error) => log(`Codex for ${target} not taken: ${error.message}`));
+      return Promise.resolve();
+    }
     if (!codexTakes.has(target)) {
       const take = (async () => {
         const deadline = now() + IDLE_WAIT;
-        while (staging || updateCoordinator.busy || ['preparing', 'waiting', 'applying'].includes(updateCoordinator.state.status)) {
+        while (otherUpdate()) {
           if (now() > deadline) throw new Error(t('Another update is in progress.'));
           await sleep(2000);
         }

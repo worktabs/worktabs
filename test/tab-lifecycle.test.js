@@ -95,20 +95,35 @@ test('early tabs wait for shared preparation before selecting a server manager',
   assert.equal(f.lifecycle.activeId, b.id);
 });
 
-test('a start whose gate opens during an update switch leaves the start to the update', async () => {
+test('a start whose gate opens during an update switch leaves the start to the update, which starts it after', async () => {
+  const { UpdateCoordinator } = require('../src/code-server/update-coordinator');
   const gate = new StartupGate();
-  let switching = false;
-  const blocked = [];
   const f = setup({ prepare: () => gate.wait() });
-  f.deps.canStart = (tab) => { if (!switching) return true; blocked.push(tab.id); return false; };
+  const tabs = new Map();
+  const coordinator = new UpdateCoordinator({
+    tabs: () => tabs, changed: () => {}, busyError: () => 'busy', startingError: () => 'a tab started',
+    waitDetail: () => '', resumeDetail: () => '', risks: async () => ({ busy: [] }), sleep: async () => {},
+    pause: () => {}, start: (tab) => f.lifecycle.start(tab), log: () => {},
+  });
+  f.deps.canStart = (tab) => coordinator.canStart(tab);
   const a = f.open('a', { start: true, activate: true });
+  tabs.set(a.id, a);
   const pending = f.lifecycle.start(a);
   await flush();
-  switching = true;
-  gate.complete();
-  await pending;
-  assert.equal(f.starts.length, 0);
-  assert.deepEqual(blocked, [a.id]);
+  // The gate opens in the middle of the switch (as Codex's install does for a Codex tab).
+  const done = await coordinator.execute(coordinator.begin([{ kind: 'import' }], 'preparing'), {
+    applying: 'applying', failure: (error) => error.message,
+    apply: async () => {
+      gate.complete();
+      await pending;
+      assert.equal(f.starts.length, 0);
+      assert.equal(a.server, 'stopped');
+      return { status: 'done', detail: '' };
+    },
+  });
+  assert.equal(done, true);
+  assert.equal(f.starts.length, 1);
+  assert.equal(a.server, 'running');
 });
 
 test('close and reopen cancel preparation waits without holding the replacement', async () => {

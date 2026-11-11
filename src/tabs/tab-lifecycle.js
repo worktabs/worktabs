@@ -119,8 +119,15 @@ class TabLifecycle {
       }
       if (!this.currentRun(run)) return;
       // A gate can open while an update switches the extensions; the update starts the tab again
-      // once it is done (canStart remembers it).
-      if (!this.deps.canStart(tab)) return;
+      // once it is done (canStart remembers it). Stopped, so that start() takes it then, or when
+      // the tab is selected.
+      if (!this.deps.canStart(tab)) {
+        this.runs.delete(tab.id);
+        run.cancel();
+        tab.server = 'stopped';
+        this.notify();
+        return;
+      }
       if (!this.currentRun(run)) return;
       await Promise.race([tab.repoLookup, run.cancelled]);
       if (!this.currentRun(run)) return;

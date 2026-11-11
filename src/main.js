@@ -487,11 +487,13 @@ function createWslServers(distro) {
     extensions: [...config.resolvedExtensions, ...helperExtensions()],
     extensionSpecs: (target) => extensionSpecs(target),
     // The distribution's own Linux Codex from Open VSX. A failure does not stop the tab (it may be
-    // a Claude one); the Codex chat check tells it, and the next start tries again.
+    // a Claude one); the Codex chat check tells it, and the next start tries again. While another
+    // update runs, the start does not wait (that update may wait for this start): the take runs
+    // after it, and the distribution installs Codex at its next start.
     beforeSync: async (target, onProgress) => {
       if (!config.agents.includes('codex') || hasCodex(target)) return;
       onProgress(t('Installing Codex from Open VSX…'));
-      await ensureCodex(target).catch((error) => logUpdate(`Codex for ${target} not taken: ${error.message}`));
+      await ensureCodex(target, { whenIdle: true }).catch((error) => logUpdate(`Codex for ${target} not taken: ${error.message}`));
     },
     unpinnedExtensions: ['anthropic.claude-code'],
     restrictExtensionGallery: config.restrictExtensionGallery,
