@@ -60,8 +60,9 @@ function createOpenVsx({ fetch, timeout = 20000 }) {
 
   // The newest release of `id` for `target` whose engines.vscode accepts `vscode`, or null. An
   // extension built once for every platform is published as universal, which a query for a
-  // platform does not return, so universal is asked next. The full version list is large (about
-  // 1 MB), so it is read only when the latest version does not qualify.
+  // platform does not return, so universal is asked next, also when the platform builds are only
+  // pre-releases or need a newer VS Code. The full version list is large (about 1 MB), so it is
+  // read only when the latest version does not qualify.
   /** @returns {Promise<Release | null>} */
   async function latestRelease(id, target, vscode) {
     for (const platform of [target, 'universal']) {
@@ -72,7 +73,7 @@ function createOpenVsx({ fetch, timeout = 20000 }) {
       if (usable(latest[0])) return release(latest[0]);
       const all = (await json(`${query}&includeAllVersions=true`)).extensions || [];
       const found = all.filter((entry) => usable(entry) && semver.valid(entry.version)).sort((a, b) => semver.rcompare(a.version, b.version))[0];
-      return found ? release(found) : null;
+      if (found) return release(found);
     }
     return null;
   }

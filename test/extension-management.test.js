@@ -340,5 +340,7 @@ test('the extension table offers Open VSX for imports and for Codex, and names t
   records.push({ id: 'openai.chatgpt', name: 'Codex', version: '1', source: { kind: 'openvsx', location: 'https://open-vsx.org/extension/openai/chatgpt' } },
     { id: 'acme.tool', name: 'Tool', version: '1', source: { kind: 'vscode' } });
   assert.deepEqual(rows(), { 'anthropic.claude-code': ['Worktabs / Open VSX', false], 'openai.chatgpt': ['Open VSX', false], 'acme.tool': ['VS Code', true] });
+  // Update checks cover this computer only, so a Linux snapshot from Open VSX keeps the action.
+  assert.equal(service.extensionState('linux-x64').rows.find((row) => row.id === 'openai.chatgpt').openVsx, true);
   assert.equal(setup().service.extensionState().rows.some((row) => row.openVsx), false);
 });

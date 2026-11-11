@@ -89,8 +89,10 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
       const current = installed.find((item) => item.id === id);
       const newer = newerImports.find((item) => item.id === id);
       // Open VSX can replace an import, and gives Codex, which the gallery install leaves out.
-      // The extensions Worktabs installs from the gallery are on Open VSX already.
-      const openVsxAction = Boolean(openVsx) && (record ? record.source.kind !== 'openvsx' : id === 'openai.chatgpt');
+      // The extensions Worktabs installs from the gallery are on Open VSX already. Update checks
+      // cover the Open VSX snapshots of this computer only, so a Linux one keeps the action, which
+      // takes its newest release.
+      const openVsxAction = Boolean(openVsx) && (record ? record.source.kind !== 'openvsx' || target !== localTarget() : id === 'openai.chatgpt');
       return { id, name: record?.name || current?.name || id, version: record?.version || current?.version || '', prepared: target !== localTarget(), source: sourceLabel(id, record, current), newer: newer?.to || '', previous: Boolean(record?.previous), imported: Boolean(record), openVsx: openVsxAction, location: record?.source.location || '' };
     });
     const codeServerVersion = config.codeServerDir ? t('Custom (VS Code {version})', { version: vscodeVersion() }) : config.codeServerVersion;

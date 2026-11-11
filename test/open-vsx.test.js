@@ -57,6 +57,14 @@ test('an extension published once for every platform is found as universal', asy
   const release = await createOpenVsx({ fetch }).latestRelease('openai.codex-audio', 'darwin-arm64', '1.145.2');
   assert.equal(release.targetPlatform, 'universal');
   assert.equal(await createOpenVsx({ fetch: fakeFetch({}).fetch }).latestRelease('acme.missing', 'win32-x64', '1.145.2'), null);
+  // Platform builds that are only pre-releases, or need a newer VS Code, do not hide a universal release.
+  const platformQuery = query('acme.tool', 'win32-x64');
+  const mixed = fakeFetch({
+    [platformQuery]: { extensions: [entry('3.0.0', { namespace: 'acme', name: 'tool', preRelease: true })] },
+    [`${platformQuery}&includeAllVersions=true`]: { extensions: [entry('3.0.0', { namespace: 'acme', name: 'tool', preRelease: true }), entry('2.5.0', { namespace: 'acme', name: 'tool', engine: '^1.200.0' })] },
+    [query('acme.tool', 'universal')]: { extensions: [entry('2.0.0', { namespace: 'acme', name: 'tool', platform: 'universal' })] },
+  });
+  assert.equal((await createOpenVsx({ fetch: mixed.fetch }).latestRelease('acme.tool', 'win32-x64', '1.145.2')).version, '2.0.0');
 });
 
 test('a pack member is taken at the pack version for the platform, else universal, and never as a pre-release', async () => {
