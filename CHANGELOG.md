@@ -2,6 +2,22 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-11-11
+
+### Features
+- install Codex from Open VSX by default, and keep the import as a fallback ([#59](https://github.com/worktabs/worktabs/pull/59))
+- take Open VSX releases as import snapshots, so a failed update goes back without a download ([#58](https://github.com/worktabs/worktabs/pull/58))
+- delete import snapshots that no record keeps, after each import and at start ([#56](https://github.com/worktabs/worktabs/pull/56))
+
+### Bug fixes
+- show Claude's monthly spend limit, and no "Usage unavailable", when an account has no 5-hour or weekly window ([#52](https://github.com/worktabs/worktabs/pull/52))
+
+### Documentation
+- link the 40-second video from the READMEs ([#57](https://github.com/worktabs/worktabs/pull/57))
+
+### Build
+- bump the npm-minor group with 5 updates ([#49](https://github.com/worktabs/worktabs/pull/49))
+
 ## [0.9.2] - 2026-11-07
 
 ### Bug fixes
