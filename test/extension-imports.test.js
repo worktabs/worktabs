@@ -139,6 +139,24 @@ test('VSIX snapshots copy the exact file and detect changes to the cached payloa
   assert.throws(() => store.package({ ...first, file: path.join(root, 'elsewhere.vsix') }), /has changed/);
 });
 
+test('Open VSX releases are downloaded into snapshots that record their page and pack members', async (t) => {
+  const root = fixture(t);
+  const store = new ExtensionImports(path.join(root, 'store'));
+  const built = await store.stage(folder(root), 'win32-x64');
+  const release = { kind: 'openvsx', id: 'acme.agent', name: 'Agent', version: '1.0.0', targetPlatform: 'universal',
+    page: 'https://open-vsx.org/extension/acme/agent', bundled: ['acme.audio'] };
+  const download = async (_item, file) => fs.copyFileSync(built.file, file);
+  const record = await store.stage(release, 'win32-x64', { download });
+  assert.deepEqual(record.source, { kind: 'openvsx', location: release.page, root: null });
+  assert.deepEqual(record.bundled, ['acme.audio']);
+  assert.equal(store.package(record), record.file);
+  // What Open VSX sent is checked like any VSIX, and nothing is left behind when it is not what was asked for.
+  const before = fs.readdirSync(path.join(root, 'store', 'packages', 'win32-x64')).length;
+  await assert.rejects(store.stage({ ...release, version: '2.0.0' }, 'win32-x64', { download }), /source changed/);
+  await assert.rejects(store.stage(release, 'win32-x64'), /not available/);
+  assert.equal(fs.readdirSync(path.join(root, 'store', 'packages', 'win32-x64')).length, before);
+});
+
 test('pruning keeps the current and previous snapshots of every target and deletes the rest', async (t) => {
   const root = fixture(t);
   const store = new ExtensionImports(path.join(root, 'store'));

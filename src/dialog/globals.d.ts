@@ -38,6 +38,7 @@ interface DialogHost {
     list(target?: string): Promise<any>;
     browse(kind: string): Promise<any>;
     import(keys: string[], target: string): Promise<any>;
+    openVsx(id: string, target: string): Promise<any>;
     rollback(id: string, target: string): Promise<any>;
     openCode(): Promise<any>;
     page(id: string): Promise<any>;

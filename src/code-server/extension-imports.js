@@ -272,14 +272,19 @@ class ExtensionImports {
     fs.writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`);
     fs.renameSync(temp, this.file);
   }
-  async stage(item, target) {
+  // `download(item, file)`: writes a release from Open VSX (open-vsx.js), for item.kind 'openvsx'.
+  /** @param {any} item @param {string} target @param {{ download?: (item: any, file: string) => Promise<void> }} [options] */
+  async stage(item, target, { download } = {}) {
     if (!TARGETS.includes(target)) throw new Error(t('Unsupported extension target.'));
     const dir = path.join(this.root, 'packages', target, crypto.randomUUID());
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${item.id}-${item.version}.vsix`);
     try {
       if (item.kind === 'vsix') await fs.promises.copyFile(item.location, file);
-      else await folderVsix(item, file);
+      else if (item.kind === 'openvsx') {
+        if (!download) throw new Error(t('Downloading from Open VSX is not available.'));
+        await download(item, file);
+      } else await folderVsix(item, file);
       const checked = readVsix(file);
       if (checked.id !== item.id || checked.version !== item.version || checked.targetPlatform !== item.targetPlatform) throw new Error(t('The source changed while importing. Refresh and try again.'));
     } catch (error) {
@@ -287,7 +292,10 @@ class ExtensionImports {
       fs.rmSync(dir, { recursive: true, force: true });
       throw error;
     }
-    return { id: item.id, name: item.name, version: item.version, targetPlatform: item.targetPlatform, file, sha256: sha256(file), source: item.snapshotSource || { kind: item.kind, location: item.location, root: item.root || null } };
+    const source = item.snapshotSource || (item.kind === 'openvsx' ? { kind: 'openvsx', location: item.page, root: null } : { kind: item.kind, location: item.location, root: item.root || null });
+    // The members of an Open VSX extension pack, which are updated and restored with it.
+    const bundled = item.kind === 'openvsx' ? item.bundled || [] : item.bundled;
+    return { id: item.id, name: item.name, version: item.version, targetPlatform: item.targetPlatform, file, sha256: sha256(file), source, ...(bundled?.length ? { bundled } : {}) };
   }
   package(record) {
     if (!inside(this.root, record.file) || sha256(record.file) !== record.sha256) throw new Error(t('An imported extension snapshot is missing or has changed.'));

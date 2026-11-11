@@ -466,5 +466,19 @@
   "Reload the tab to try again.": "タブを再読み込みすると、もう一度試せます。",
   "Go back to {version}": "{version} に戻す",
   "Reload the tab": "タブを再読み込み",
-  "Could not go back to the previous version.": "以前のバージョンに戻せませんでした。"
+  "Could not go back to the previous version.": "以前のバージョンに戻せませんでした。",
+  "Open VSX": "Open VSX",
+  "Use Open VSX": "Open VSX を使う",
+  "Open VSX has no checksum for {name} {version}.": "Open VSX に {name} {version} のチェックサムがありません。",
+  "Could not download {name} {version} from Open VSX (HTTP {status}).": "Open VSX から {name} {version} をダウンロードできませんでした (HTTP {status})。",
+  "The download of {name} {version} from Open VSX does not match its checksum.": "Open VSX からダウンロードした {name} {version} がチェックサムと一致しません。",
+  "Downloading from Open VSX is not available.": "Open VSX からはダウンロードできません。",
+  "Open VSX has no release of {id} for {target} that runs on VS Code {version}.": "Open VSX には、VS Code {version} で動く {target} 向けの {id} のリリースがありません。",
+  "Open VSX has no release of {id}, which {name} includes.": "Open VSX には、{name} に含まれる {id} のリリースがありません。",
+  "Preparing the download from Open VSX": "Open VSX からのダウンロードを準備中",
+  "Downloading {name} {version} from Open VSX… {progress}": "Open VSX から {name} {version} をダウンロードしています… {progress}",
+  "Downloading {name} {version} from Open VSX…": "Open VSX から {name} {version} をダウンロードしています…",
+  "Keeping the current versions…": "今のバージョンを保存しています…",
+  "{name} comes with {pack}. Restore {pack} instead.": "{name} は {pack} に含まれています。{pack} を以前のバージョンに戻してください。",
+  "{name} comes with {pack}. Take {pack} from Open VSX instead.": "{name} は {pack} に含まれています。{pack} を Open VSX から取り込んでください。"
 }

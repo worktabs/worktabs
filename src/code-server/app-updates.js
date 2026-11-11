@@ -30,9 +30,10 @@ function downloadProgress(version, report, now = Date.now) {
 // `servers`: the code-server manager of the tabs here (null until it is made). `pause`: stops a
 // tab for the switch and shows that it is updating. `probe`: tries the new versions in a hidden
 // instance (update-probe.js). `find`: findUpdates (updates.js, which takes Electron's net).
+// `openVsx`: the Open VSX client that downloads releases as snapshots (open-vsx.js).
 function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServers, extensionImports,
   pause, start, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe, messageBox,
-  changed, log, find, ensure = ensureCodeServer, removeOld = removeOldCodeServers,
+  changed, log, find, openVsx = null, ensure = ensureCodeServer, removeOld = removeOldCodeServers,
   localExtensions = installedExtensions, target = localTarget }) {
   const coordinator = new UpdateCoordinator({
     tabs: () => tabs,
@@ -53,7 +54,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     config, extensionImports, updateCoordinator: coordinator, getServers: servers,
     helperExtensions,
     vscodeVersion: () => JSON.parse(fs.readFileSync(path.join(servers().codeServerDir, 'lib', 'vscode', 'package.json'), 'utf8')).version,
-    probeInstance: probe, refreshResolvedExtensions, setUpdate, startUpdate, checkError: () => checkError, log,
+    probeInstance: probe, refreshResolvedExtensions, setUpdate, startUpdate, checkError: () => checkError, log, openVsx,
   });
 
   function setUpdate(next) {
@@ -80,6 +81,15 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
       errors = found.errors;
     } catch (error) {
       errors = [error.message];
+    }
+    // The snapshots taken from Open VSX, apart from the gallery, so that one failing source does
+    // not hide the other's updates.
+    try {
+      const fromOpenVsx = await management.openVsxUpdates(target());
+      items.push(...fromOpenVsx.updates);
+      errors.push(...fromOpenVsx.errors);
+    } catch (error) {
+      errors.push(error.message);
     }
     if (errors.length) {
       for (const error of errors) log(`check failed: ${error}`);
@@ -117,6 +127,11 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     if (imports.length) {
       const keys = imports.map((item) => management.rememberCandidate(item.candidate).key);
       return management.queueExtensionImports(keys, target(), update.items.filter((item) => item.kind !== 'import'));
+    }
+    // Releases from Open VSX go through the same snapshot batch as imports, then the rest follows.
+    const fromOpenVsx = update.items.filter((item) => item.kind === 'openvsx');
+    if (fromOpenVsx.length) {
+      return management.useOpenVsx(fromOpenVsx.map((item) => item.id), target(), update.items.filter((item) => item.kind !== 'openvsx'));
     }
     const { items } = update;
     const codeServer = items.find((item) => item.kind === 'code-server');
