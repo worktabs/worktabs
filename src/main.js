@@ -200,7 +200,10 @@ app.setAppUserModelId(app.isPackaged ? 'io.github.worktabs.worktabs' : 'io.githu
 // hidden for scripted checks.
 if (process.env.WORKTABS_DATA_DIR) app.setPath('userData', path.resolve(process.env.WORKTABS_DATA_DIR));
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// app.quit() does not stop the rest of this file, so what a second instance must not do (touch the
+// shared data folder) checks this too.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 
 // On macOS, an app started from Finder or the Dock has no PATH from the shell's start-up files:
 // ghq, gh and claude would not be found (see shell-env.js). Read while Electron starts, and taken
@@ -599,7 +602,7 @@ const probeInstance = createUpdateProbe({
 // `busy`) | 'applying' | 'done' | 'failed'. items: the updates, [{ kind, id, name, from, to }].
 const {
   coordinator: updateCoordinator, setUpdate, checkForUpdates, checkLocalExtensionUpdates, startUpdate, cancelUpdate, dismissUpdate,
-  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension,
+  updateRisks, extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension, pruneSnapshots,
 } = createAppUpdates({
   config, saveConfig, dataDir, tabs, servers: codeServers.local, wslServers: codeServers.wsl, extensionImports,
   pause: (tab) => {
@@ -609,6 +612,10 @@ const {
   start: startServer, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe: probeInstance,
   messageBox, changed: pushState, log: logUpdate, find: findUpdates,
 });
+// Left behind by earlier versions of the app, which never deleted a replaced snapshot, or by a
+// run that quit in the middle of an import. Only in the instance that holds the lock: another
+// one, started while the first stages an import, would delete what has no record yet.
+if (primaryInstance) pruneSnapshots();
 
 // ---- Updates of Worktabs itself ------------------------------------------------------------
 

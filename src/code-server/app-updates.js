@@ -53,7 +53,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     config, extensionImports, updateCoordinator: coordinator, getServers: servers,
     helperExtensions,
     vscodeVersion: () => JSON.parse(fs.readFileSync(path.join(servers().codeServerDir, 'lib', 'vscode', 'package.json'), 'utf8')).version,
-    probeInstance: probe, refreshResolvedExtensions, setUpdate, startUpdate, checkError: () => checkError,
+    probeInstance: probe, refreshResolvedExtensions, setUpdate, startUpdate, checkError: () => checkError, log,
   });
 
   function setUpdate(next) {

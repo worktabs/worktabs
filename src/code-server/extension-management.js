@@ -6,7 +6,7 @@ const imports = require('./extension-imports');
 
 function createExtensionManagement({ config, extensionImports, updateCoordinator, getServers,
   helperExtensions, vscodeVersion, probeInstance, refreshResolvedExtensions, setUpdate, startUpdate,
-  checkError = () => '', platform = process.platform, newKey = crypto.randomUUID,
+  checkError = () => '', log = (_line) => {}, platform = process.platform, newKey = crypto.randomUUID,
   schedule = (fn) => setTimeout(fn, 0), localTarget = imports.localTarget,
   discoverDesktop = imports.discoverDesktop, localExtensions = imports.installedExtensions,
   validateBatch = imports.validateBatch, readVsix = imports.readVsix, applyImportBatch = imports.applyImportBatch }) {
@@ -14,6 +14,14 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   // Staging runs before the update transaction, so its errors reach the dialog, and packing a
   // large folder takes a while. Nothing else may start an import in that gap.
   let staging = false;
+
+  // Snapshots that no record keeps: those replaced twice, and those of a batch that failed. Only
+  // while no batch stages or applies, as a staged snapshot has no record yet.
+  function pruneSnapshots() {
+    if (staging || updateCoordinator.busy) return;
+    const removed = extensionImports.prune();
+    if (removed.length) log(`removed ${removed.length} unused snapshot(s)`);
+  }
 
   function extensionSpecs(target = localTarget()) {
     const records = extensionImports.records(target);
@@ -71,6 +79,11 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
         const old = installed.find((entry) => entry.id === item.id);
         if (target === localTarget() && old) previous.push(await extensionImports.stage(old, target));
       }
+    } catch (error) {
+      // What was staged before the failure will never have a record.
+      staging = false;
+      pruneSnapshots();
+      throw error;
     } finally {
       staging = false;
     }
@@ -102,6 +115,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
         return { status: 'done', detail: target === localTarget() ? '' : t('Linux imports apply when the matching WSL tabs next start.') };
       },
     });
+    // Done, failed, or cancelled: the snapshots replaced twice, or never committed, are not needed.
+    pruneSnapshots();
     if (succeeded && followUp.length) {
       setUpdate({ status: 'available', items: followUp });
       await startUpdate();
@@ -118,7 +133,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     return queueExtensionImports([key], target);
   }
 
-  return { extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension };
+  return { extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, rollbackExtension, pruneSnapshots };
 }
 
 module.exports = { createExtensionManagement };

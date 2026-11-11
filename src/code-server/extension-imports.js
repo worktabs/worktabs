@@ -303,6 +303,44 @@ class ExtensionImports {
     }
     this.write(state);
   }
+  // Deletes the staged packages that no record keeps as its current or previous snapshot, and
+  // returns their folders. Each stage makes a folder of its own, and a record keeps only one
+  // previous snapshot, so without this every import leaves a few hundred MB behind. Call it only
+  // between batches: a staged snapshot has no record until its batch commits. Unreadable
+  // records delete nothing, as they are what tells which packages are in use. A package is
+  // matched by its <target>/<folder> (a UUID), not its full path, so that a data folder that
+  // moved, or a path written in other case or slashes, does not lose every snapshot.
+  prune({ platform = process.platform } = {}) {
+    let state;
+    try { state = this.state(); } catch { return []; }
+    const key = (dir) => {
+      const parts = dir.split(/[\\/]+/).filter(Boolean).slice(-2).join('/');
+      return platform === 'win32' ? parts.toLowerCase() : parts;
+    };
+    const kept = new Set();
+    for (const records of Object.values(state)) {
+      for (const record of Object.values(records || {})) {
+        for (const snapshot of [record, record?.previous]) {
+          if (typeof snapshot?.file === 'string') kept.add(key(snapshot.file.replace(/[\\/]+[^\\/]*$/, '')));
+        }
+      }
+    }
+    const folders = (dir) => {
+      try { return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => path.join(dir, entry.name)); }
+      catch { return []; }
+    };
+    const removed = [];
+    for (const target of folders(path.join(this.root, 'packages'))) {
+      for (const dir of folders(target)) {
+        if (kept.has(key(dir))) continue;
+        try {
+          fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+          removed.push(dir);
+        } catch { /* Still open somewhere: the next prune tries again. */ }
+      }
+    }
+    return removed;
+  }
   localUpdates(target) {
     const updates = [];
     for (const record of this.records(target)) {
