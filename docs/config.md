@@ -77,7 +77,7 @@ The data folder is `%APPDATA%\Worktabs` on Windows and `~/Library/Application Su
 | `window.json` | Window size, position, and maximized state, and the sidebar width set by dragging |
 | `repos.json` | The last list of repositories read (`repos`), the worktrees read (`worktrees`), the remote of each repository (`remotes`: provider, GitHub URL, visibility, and the current URL of repositories that were renamed or moved to another owner), and the accounts gh is signed in to with the repositories of their orgs (`owned`; the ones not cloned are shown from these). On the next start, the app shows this first |
 | `theme.json` | The colors of the VS Code theme last matched |
-| `usage.json` | The last Claude usage received |
+| `usage.json` | The last Claude usage received (the windows and the monthly spend limit) |
 | `code-server\` | The code-server the app downloaded (the current version and the one before) |
 | `extensions\` | Extensions shared by all tabs |
 | `extension-imports\` | Imported snapshots, SHA-256 hashes, per-platform source records, and the previous snapshot for restoration |

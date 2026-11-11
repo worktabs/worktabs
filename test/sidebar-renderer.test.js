@@ -4,7 +4,7 @@ const path = require('path');
 const test = require('node:test');
 const vm = require('vm');
 
-const { usageView } = require('../src/agents/usage');
+const { spendView, usageView } = require('../src/agents/usage');
 const { CodexUsageTracker } = require('../src/codex/codex-usage');
 const { quotaBuckets } = require('../src/codex/codex-quota');
 const { ConversationStore } = require('../src/conversations/conversation-store');
@@ -167,6 +167,16 @@ test('the footer distinguishes Claude, Codex and both, with used percentages and
     assert.ok(footer.textContent.includes(status));
     assert.equal(footer.querySelectorAll('.usage-fill').length, 0);
   }
+
+  // A Claude Enterprise account with only a monthly spend limit: the amounts go where a reset time goes.
+  const month = spendView({ used: 8500, limit: 10000, places: 2, currency: 'USD', reached: false, at: now }, now);
+  update({ ...state, usage: [], codexUsage: null, claudeUsage: { windows: month, status: '' } });
+  assert.deepEqual(footer.querySelectorAll('.usage-label').map((e) => e.textContent), ['Month']);
+  assert.deepEqual(footer.querySelectorAll('.usage-percent').map((e) => e.textContent), ['85%']);
+  assert.equal(footer.querySelectorAll('.usage-row.warn').length, 1);
+  assert.equal(footer.querySelector('.usage-reset').textContent, '$85 / $100');
+  assert.equal(footer.querySelector('.usage-reset').getAttribute('aria-label'), '$85 / $100');
+  assert.match(footer.querySelector('.usage-row').title, /^Monthly spend: \$85\.00 of \$100\.00 used\nReceived /);
 });
 
 test('conversation providers and labels stay separate from state badges across updates', async () => {

@@ -4,7 +4,7 @@ const { REFRESH_EVERY, readUsage } = require('./usage-refresh');
 const { t } = require('../i18n');
 
 const FAILURE_CATEGORIES = new Set(['timeout', 'cancelled', 'resolution', 'process', 'initialization', 'account-read', 'quota-read']);
-const CATEGORIES = new Set([...FAILURE_CATEGORIES, '', 'read-failed', 'account-changing', 'read-in-progress', 'empty-quota', 'missing-quota',
+const CATEGORIES = new Set([...FAILURE_CATEGORIES, '', 'read-failed', 'account-changing', 'read-in-progress', 'empty-quota', 'missing-quota', 'spend-only', 'no-windows',
   'identity-unavailable', 'invalid-event', 'out-of-order', 'account-boundary', 'identity-pending', 'account-mode', 'identity-mismatch', 'superseded']);
 
 /**
@@ -69,7 +69,7 @@ class UsagePolling {
     this.reads.set(agent, controller);
     const at = this.now();
     const epoch = this.codexUsage.accountEpoch;
-    if (agent === 'claude') this.usage.status = 'Waiting for refresh';
+    if (agent === 'claude') this.usage.refreshing();
     else {
       this.codexUsage.refresh = { active: true, attemptAt: at, nextAt: this.nextAt };
       this.codexUsage.refreshStatus = '';
@@ -83,8 +83,11 @@ class UsagePolling {
         result = { outcome: 'cancelled', category: 'cancelled' };
       } else if (agent === 'claude') {
         const superseded = at < this.usage.latest;
-        this.usage.refresh(snapshot.windows, at, this.now());
-        result = { outcome: superseded ? 'rejected' : Object.keys(snapshot.windows).length ? 'success' : 'unavailable', category: superseded ? 'superseded' : Object.keys(snapshot.windows).length ? '' : 'empty-quota' };
+        this.usage.refresh(snapshot, at, this.now());
+        // A read that worked but found no window is not a failure: Claude Enterprise accounts
+        // may have only a monthly spend limit (spend-only), or no limit at all (no-windows).
+        result = superseded ? { outcome: 'rejected', category: 'superseded' } : { outcome: 'success',
+          category: Object.keys(snapshot.windows || {}).length ? '' : this.usage.spend ? 'spend-only' : 'no-windows' };
       } else {
         result = this.codexUsage.applyRefresh(snapshot, randomUUID(), epoch, this.now());
       }
