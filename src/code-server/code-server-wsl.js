@@ -56,6 +56,7 @@ class WslCodeServerManager extends InstanceManager {
    * @param {{ distro: string, dataDir: string, version?: () => string, customDir?: string,
    *   download?: (options: { version: string, name: string, onProgress: (mb: number, totalMb: number) => void }) => Promise<string>,
    *   extensions?: string[], extensionSpecs?: (target: string) => string[], unpinnedExtensions?: string[],
+   *   beforeSync?: (target: string, onProgress: (text: string) => void) => Promise<void> | void,
    *   restrictExtensionGallery?: boolean, windowsExtensionsDir?: string, hooks: { token: string },
    *   locale?: string, managedSettings?: Record<string, any>, runtime?: object, wsl?: any }} options
    */
@@ -68,6 +69,9 @@ class WslCodeServerManager extends InstanceManager {
     this.download = options.download;
     this.extensions = options.extensions;
     this.extensionSpecs = options.extensionSpecs;
+    // Readies the snapshots of the distribution's target (Codex from Open VSX, #50) before the
+    // extensions are synced. Known only once the distribution has said its architecture.
+    this.beforeSync = options.beforeSync;
     this.unpinnedExtensions = options.unpinnedExtensions;
     this.restrictExtensionGallery = options.restrictExtensionGallery;
     this.windowsExtensionsDir = options.windowsExtensionsDir;
@@ -107,6 +111,11 @@ class WslCodeServerManager extends InstanceManager {
 
   get base() {
     return `${this.home}/.worktabs`;
+  }
+
+  // The extension target of the distribution's architecture (known after prepare).
+  get target() {
+    return `linux-${this.arch === 'arm64' ? 'arm64' : 'x64'}`;
   }
 
   get extensionsDir() {
@@ -322,6 +331,7 @@ class WslCodeServerManager extends InstanceManager {
     const linuxFolder = parseWslPath(folder).path;
     if (!this.ready()) onProgress(t('Preparing WSL {distro}…', { distro: this.distro }));
     await this.prepare({ install: true, onProgress });
+    if (this.beforeSync) await this.beforeSync(this.target, onProgress);
     onProgress(t('Checking the extensions…'));
     await this.syncExtensions();
     try {

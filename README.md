@@ -15,7 +15,7 @@ One window for your Claude Code and Codex conversations, one tab per git worktre
 
 [Watch it in motion: a 40-second video on YouTube](https://youtu.be/DdB_f7G_cYw)
 
-Worktabs starts a browser-based VS Code (code-server) for each git worktree and lets you switch between them from a sidebar. Each tab runs the selected agent's own extension and chat panel. Claude Code is installed by default; Codex can be enabled after importing a compatible extension. Badges in the sidebar and OS notifications tell you which conversations are working and which are waiting for you. It runs on Windows and macOS.
+Worktabs starts a browser-based VS Code (code-server) for each git worktree and lets you switch between them from a sidebar. Each tab runs the selected agent's own extension and chat panel. Claude Code is installed by default, and Codex is installed from Open VSX when you enable it. Badges in the sidebar and OS notifications tell you which conversations are working and which are waiting for you. It runs on Windows and macOS.
 
 ## Who it is for
 
@@ -47,10 +47,10 @@ Detailed comparisons and the design decisions are in [docs/research.md](docs/res
 ### Trade-offs
 
 - No custom chat panel or editor. Worktabs uses code-server and the Claude Code extension as they are.
-- Each tab is code-server, not your desktop VS Code. Settings and extensions are kept apart. Claude uses Open VSX by default; compatible, licensed extensions can also be imported from desktop VS Code or VSIX ([extension management](docs/extensions.md)).
+- Each tab is code-server, not your desktop VS Code. Settings and extensions are kept apart. Claude and Codex come from Open VSX by default; compatible, licensed extensions can also be imported from desktop VS Code or VSIX ([extension management](docs/extensions.md)).
 - Worktrees made by other means (`git worktree`, Orca, and so on) open as they are.
 - Each tab uses about 0.8 GB of memory, in exchange for full VS Code.
-- Worktabs runs on Windows and macOS. Claude Code is installed by default; Codex can be enabled with a compatible, permitted extension import. WSL tabs are Windows only.
+- Worktabs runs on Windows and macOS. Claude Code is installed by default; Codex is installed from Open VSX when enabled, and an import from desktop VS Code or a VSIX stays possible. WSL tabs are Windows only.
 
 ## Features
 
@@ -67,7 +67,7 @@ Detailed comparisons and the design decisions are in [docs/research.md](docs/res
 
 The UI is in English or Japanese, following the system's language (`locale` in the settings).
 
-To use Codex, import its extension in **Settings > Extensions**, enable it in **Settings > General**, and sign in through its chat panel. Both agents can be enabled together; the default agent selects new tabs, while existing conversations keep their provider. See [agent settings](docs/config.md) and the [Codex verification matrix](docs/codex-verification.md) for setup and the environments still awaiting real-extension checks.
+To use Codex, enable it in **Settings > General**: Worktabs installs its extension from Open VSX (the update card in the sidebar shows the download), and Codex tabs open once it is there. Then sign in through its chat panel. When Open VSX falls behind or a version does not start, import Codex from desktop VS Code or a VSIX in **Settings > Extensions** instead. Both agents can be enabled together; the default agent selects new tabs, while existing conversations keep their provider. See [agent settings](docs/config.md) and the [Codex verification matrix](docs/codex-verification.md) for setup and the environments still awaiting real-extension checks.
 
 A map of the window, with what you can do in each part, is in [docs/features.md](docs/features.md).
 
@@ -141,9 +141,9 @@ Details are in [docs/architecture.md](docs/architecture.md). To report a vulnera
 On the first start, Worktabs downloads and runs:
 
 - [code-server](https://github.com/coder/code-server) from its GitHub releases
-- The [Claude Code extension](https://open-vsx.org/extension/Anthropic/claude-code), and the language pack when VS Code is not in English, from [Open VSX](https://open-vsx.org/)
+- The [Claude Code extension](https://open-vsx.org/extension/Anthropic/claude-code), the [Codex extension](https://open-vsx.org/extension/openai/chatgpt) with Codex Audio when Codex is enabled, and the language pack when VS Code is not in English, from [Open VSX](https://open-vsx.org/)
 
-Using Claude Code requires your own Claude account and is subject to Anthropic's terms. Worktabs does not download the Codex extension: you import it yourself ([extension management](docs/extensions.md)), and using Codex is subject to OpenAI's terms.
+Using Claude Code requires your own Claude account and is subject to Anthropic's terms. Worktabs downloads the Codex extension from Open VSX when Codex is enabled, unless you import it yourself ([extension management](docs/extensions.md)). Using Codex needs your own OpenAI account and is subject to OpenAI's terms.
 
 Worktabs is an independent project. It is not affiliated with, endorsed by, or sponsored by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. OpenAI and Codex are trademarks of OpenAI.
 
@@ -175,3 +175,5 @@ See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for branches, commits, and pull r
 [MIT](LICENSE). Third-party software in the installer and zips, and what Worktabs downloads at run time, is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Worktabs does not ship the Claude Code extension. It downloads the extension from Open VSX, under Anthropic's license. Using it needs your own Claude account and is subject to Anthropic's terms of service.
+
+Worktabs does not ship the Codex extension either. When Codex is enabled, it downloads the extension from OpenAI's publication on Open VSX, whose license refers to [OpenAI's terms of use](https://openai.com/policies/row-terms-of-use).

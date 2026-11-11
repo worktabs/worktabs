@@ -15,11 +15,11 @@ function setupMessage(agent, folder) {
   const wsl = parseWslPath(folder);
   if (wsl) {
     return agent === 'codex'
-      ? t('The Codex extension or its executable is missing or incompatible in WSL {distro}. Import a matching Linux Codex extension in Settings > Extensions, then open a tab in that distribution to install it.', { distro: wsl.distro })
+      ? t('The Codex extension or its executable is missing or incompatible in WSL {distro}. Enable Codex in Settings and open a tab in that distribution to install it from Open VSX, or import a matching Linux Codex extension in Settings > Extensions.', { distro: wsl.distro })
       : t('The Claude Code extension or its executable is missing or incompatible in WSL {distro}. Enable Claude in Settings and open a tab in that distribution to install it, or import a matching Linux extension in Settings > Extensions.', { distro: wsl.distro });
   }
   return agent === 'codex'
-    ? t('The Codex extension or its executable is missing or incompatible. Import a Codex extension for this computer in Settings > Extensions.')
+    ? t('The Codex extension or its executable is missing or incompatible. Enable Codex in Settings to install it from Open VSX, or press Use Open VSX or import Codex in Settings > Extensions.')
     : t('The Claude Code extension or its executable is missing or incompatible. Enable Claude in Settings and open a tab to install it, or reinstall it through Settings > Extensions.');
 }
 

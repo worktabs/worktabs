@@ -377,7 +377,7 @@ It replaces the folder or `Worktabs.app` the app runs from, so the installer and
 
 ## Updating code-server and extensions
 
-Use **Settings > Extensions** (the gear at the top of the sidebar, or **Extensions and updates** in the update card) to see sources and versions, import desktop extensions or VSIX files, and check for updates. Claude stays on Open VSX by default. Codex uses a user-provided import. Desktop imports need periodic updates in VS Code and re-importing; VSIX imports need newer files. These are local-source checks, not global Marketplace notifications ([extensions.md](extensions.md)). Updates wait for Claude and Codex turns to finish and edits to be saved. If Worktabs cannot see whether Codex is working in a tab, the sidebar asks you to close that tab first. Idle instances stop before shared extensions change.
+Use **Settings > Extensions** (the gear at the top of the sidebar, or **Extensions and updates** in the update card) to see sources and versions, import desktop extensions or VSIX files, and check for updates. Claude and Codex come from Open VSX by default; Codex can also be imported. Desktop imports need periodic updates in VS Code and re-importing; VSIX imports need newer files. These are local-source checks, not global Marketplace notifications ([extensions.md](extensions.md)). Updates wait for Claude and Codex turns to finish and edits to be saved. If Worktabs cannot see whether Codex is working in a tab, the sidebar asks you to close that tab first. Idle instances stop before shared extensions change.
 
 The app does not update code-server or the extensions (Claude Code and the language pack) on its own. When a new version exists, "Update available" appears at the top of the sidebar.
 

@@ -82,14 +82,33 @@ test('early tabs wait for shared preparation before selecting a server manager',
   assert.equal(f.starts.length, 0);
   assert.equal(a.server, 'starting');
   assert.equal(b.server, 'starting');
+  // At the gate, nothing is launched yet: updates do not wait for these starts.
+  assert.deepEqual([a.preparing, b.preparing], [true, true]);
   assert.equal(f.lifecycle.activeId, b.id);
   gate.complete();
   await Promise.all([first, second]);
   assert.equal(managers, 2);
   assert.equal(f.starts.length, 2);
+  assert.deepEqual([a.preparing, b.preparing], [false, false]);
   assert.equal(a.server, 'running');
   assert.equal(b.server, 'running');
   assert.equal(f.lifecycle.activeId, b.id);
+});
+
+test('a start whose gate opens during an update switch leaves the start to the update', async () => {
+  const gate = new StartupGate();
+  let switching = false;
+  const blocked = [];
+  const f = setup({ prepare: () => gate.wait() });
+  f.deps.canStart = (tab) => { if (!switching) return true; blocked.push(tab.id); return false; };
+  const a = f.open('a', { start: true, activate: true });
+  const pending = f.lifecycle.start(a);
+  await flush();
+  switching = true;
+  gate.complete();
+  await pending;
+  assert.equal(f.starts.length, 0);
+  assert.deepEqual(blocked, [a.id]);
 });
 
 test('close and reopen cancel preparation waits without holding the replacement', async () => {

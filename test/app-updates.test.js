@@ -11,7 +11,8 @@ function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], cod
   const updates = createAppUpdates({
     config, saveConfig: () => {}, dataDir: '/data', tabs: new Map(tabs.map((tab) => [tab.id, tab])),
     servers: () => ({ codeServerDir }), wslServers: new Map(), openVsx,
-    extensionImports: { localUpdates: () => [...local], records: () => records, prune: () => [],
+    // `records`: this target's, or a function of the target.
+    extensionImports: { localUpdates: () => [...local], records: (each = target) => (typeof records === 'function' ? records(each) : each === target ? records : []), prune: () => [],
       stage: async () => { throw new Error('offline'); } },
     pause: () => {}, start: () => {}, stopRisks: async (tab) => tab.risks || [],
     callHelper: async () => (codexActive === null ? false : { active: codexActive }),
@@ -49,6 +50,14 @@ test('newer Open VSX releases of snapshots join the gallery updates, and are app
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(updates.coordinator.state.status, 'failed');
   assert.match(updates.coordinator.state.detail, /offline\. The previous versions stay\./);
+
+  // Snapshots prepared for WSL are checked too, and each target is applied in a batch of its own.
+  const both = setup({ codeServerDir, target: 'win32-x64', openVsx,
+    records: (each) => (['win32-x64', 'linux-x64'].includes(each) ? records : []) });
+  await both.updates.checkForUpdates();
+  assert.deepEqual(both.updates.coordinator.state.items.map((item) => `${item.id} ${item.target}`), ['openai.chatgpt win32-x64', 'openai.chatgpt linux-x64']);
+  await both.updates.startUpdate();
+  assert.deepEqual(both.updates.coordinator.state.items.map((item) => `${item.id} ${item.target}`), ['openai.chatgpt win32-x64']);
 });
 
 test('updates found are offered; none found says so only when asked from the menu', async () => {

@@ -244,7 +244,7 @@ test('suggestBranch reports the selected agent when branch naming cannot run', a
   const missing = async () => {
     throw Object.assign(new Error('failed'), { code: 127, stderr: 'sh: 1: codex: not found\n' });
   };
-  assert.match((await task.suggestBranch(repo, issue, { agent: 'codex', ask: missing })).error, /Could not suggest a name: The Codex extension.*Import/);
+  assert.match((await task.suggestBranch(repo, issue, { agent: 'codex', ask: missing })).error, /Could not suggest a name: The Codex extension.*Open VSX/);
 });
 
 test('suggestions use extension binaries without a PATH CLI and keep execution restrictions', async (t) => {

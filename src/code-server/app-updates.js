@@ -61,6 +61,13 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     coordinator.report(next);
   }
 
+  // This computer, and the Linux targets that have snapshots from Open VSX.
+  function openVsxTargets() {
+    const linux = ['linux-x64', 'linux-arm64'].filter((each) => each !== target()
+      && extensionImports.records(each).some((record) => record.source?.kind === 'openvsx'));
+    return [target(), ...linux];
+  }
+
   // `manual`: asked for from the menu, which says so when there is nothing to update.
   async function checkForUpdates({ manual = false } = {}) {
     if (UPDATE_BUSY.includes(coordinator.state.status)) return;
@@ -83,13 +90,16 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
       errors = [error.message];
     }
     // The snapshots taken from Open VSX, apart from the gallery, so that one failing source does
-    // not hide the other's updates.
-    try {
-      const fromOpenVsx = await management.openVsxUpdates(target());
-      items.push(...fromOpenVsx.updates);
-      errors.push(...fromOpenVsx.errors);
-    } catch (error) {
-      errors.push(error.message);
+    // not hide the other's updates: this computer's, and those prepared for WSL (#50 takes Codex
+    // for each distribution's architecture).
+    for (const each of openVsxTargets()) {
+      try {
+        const fromOpenVsx = await management.openVsxUpdates(each);
+        items.push(...fromOpenVsx.updates);
+        errors.push(...fromOpenVsx.errors);
+      } catch (error) {
+        errors.push(error.message);
+      }
     }
     if (errors.length) {
       for (const error of errors) log(`check failed: ${error}`);
@@ -128,10 +138,13 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
       const keys = imports.map((item) => management.rememberCandidate(item.candidate).key);
       return management.queueExtensionImports(keys, target(), update.items.filter((item) => item.kind !== 'import'));
     }
-    // Releases from Open VSX go through the same snapshot batch as imports, then the rest follows.
+    // Releases from Open VSX go through the same snapshot batch as imports, one target at a time,
+    // then the rest follows.
     const fromOpenVsx = update.items.filter((item) => item.kind === 'openvsx');
     if (fromOpenVsx.length) {
-      return management.useOpenVsx(fromOpenVsx.map((item) => item.id), target(), update.items.filter((item) => item.kind !== 'openvsx'));
+      const next = fromOpenVsx[0].target || target();
+      const batch = fromOpenVsx.filter((item) => (item.target || target()) === next);
+      return management.useOpenVsx(batch.map((item) => item.id), next, update.items.filter((item) => !batch.includes(item)));
     }
     const { items } = update;
     const codeServer = items.find((item) => item.kind === 'code-server');

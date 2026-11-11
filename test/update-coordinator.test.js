@@ -68,6 +68,13 @@ test('a tab starting during the risk read prevents the switch', async () => {
   assert.equal(coordinator.switchOwner, null);
 });
 
+test('a start still at its gates does not stop the switch: a Codex tab waits there for this very update', async () => {
+  const { execute, tabs, events } = setup();
+  tabs.set('codex', { id: 'codex', server: 'starting', preparing: true });
+  assert.equal(await execute(), true);
+  assert.equal(events.includes('tab started'), false);
+});
+
 test('starts requested during the switch resume; closed and reopened identities are not confused', async () => {
   const apply = deferred();
   const { coordinator, strategy, execute, tabs, events } = setup();

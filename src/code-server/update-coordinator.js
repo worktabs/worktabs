@@ -57,7 +57,8 @@ class UpdateCoordinator {
 
   pause(run) {
     const tabs = [...this.deps.tabs().values()];
-    if (tabs.some((tab) => tab.server === 'starting')) throw new Error(this.deps.startingError());
+    // A start still at its gates has launched nothing; it checks canStart once through them.
+    if (tabs.some((tab) => tab.server === 'starting' && !tab.preparing)) throw new Error(this.deps.startingError());
     this.switchOwner = run;
     for (const tab of tabs) {
       if (tab.server !== 'running') continue;
@@ -86,9 +87,12 @@ class UpdateCoordinator {
     let phase = 'prepare';
     try {
       const prepared = strategy.prepare ? await strategy.prepare(run.report) : undefined;
-      if (!(await this.waitForIdle(run))) return false;
+      // `shared: false`: the batch changes nothing that running tabs use (snapshots prepared for
+      // WSL, which install when its tabs next start), so it neither waits for them nor stops them.
+      const shared = strategy.shared !== false;
+      if (shared && !(await this.waitForIdle(run))) return false;
       run.report({ status: 'applying', detail: strategy.applying });
-      this.pause(run);
+      if (shared) this.pause(run);
       phase = 'apply';
       result = await strategy.apply(prepared, run.report);
     } catch (error) {

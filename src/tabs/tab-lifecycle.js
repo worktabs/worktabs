@@ -108,7 +108,19 @@ class TabLifecycle {
       // Managers stop by tab ID. Do not let an old start's cleanup stop its replacement.
       await previous;
       if (!this.currentRun(run)) return;
-      await Promise.race([this.deps.prepare?.(tab), run.cancelled]);
+      // Until it passes the gates (start-up, Codex from Open VSX), a start has launched nothing and
+      // uses no extensions, so an update need not wait for it (idleWaitReason). Codex's install is
+      // an update, and a Codex tab waits for it here.
+      tab.preparing = true;
+      try {
+        await Promise.race([this.deps.prepare?.(tab), run.cancelled]);
+      } finally {
+        tab.preparing = false;
+      }
+      if (!this.currentRun(run)) return;
+      // A gate can open while an update switches the extensions; the update starts the tab again
+      // once it is done (canStart remembers it).
+      if (!this.deps.canStart(tab)) return;
       if (!this.currentRun(run)) return;
       await Promise.race([tab.repoLookup, run.cancelled]);
       if (!this.currentRun(run)) return;
