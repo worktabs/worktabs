@@ -28,6 +28,7 @@ const {
   visibilityGroups,
   visibilityQuery,
 } = require('../src/repos/github');
+const { ownerOf, remoteOf, remoteParts } = require('../src/repos/github-remote');
 const { git, makeRepo, tempDir } = require('./support');
 
 // The machine's own ~/.ssh/config and gh would decide otherwise: no SSH host stands for another,
@@ -485,14 +486,16 @@ test('readRemotes looks up SSH hosts, and asks gh only for the hosts their names
   setGithubHosts(['https://Code.Example.com/', 42]);
   t.after(() => setGithubHosts([]));
   const found = await readRemotes([alias, enterprise, configured, github, gitlab, bitbucket, other], 1);
+  // The owner is on the host an SSH alias stands for; on GitLab, a group with its subgroups; on a
+  // Bitbucket Server, the project, without the /scm/ of its web address.
   assert.deepEqual(Object.fromEntries(found), {
-    [alias]: { provider: 'github', url: 'https://github.com/o/alias' },
-    [enterprise]: { provider: 'github', url: 'https://git.example.co.jp/team/enterprise' },
-    [configured]: { provider: 'github', url: 'https://code.example.com/team/configured' },
-    [github]: { provider: 'github', url: 'https://github.com/o/github' },
-    [gitlab]: { provider: 'gitlab', url: null },
-    [bitbucket]: { provider: 'bitbucket', url: null },
-    [other]: { provider: 'other', url: null },
+    [alias]: { provider: 'github', url: 'https://github.com/o/alias', owner: { host: 'github.com', owner: 'o' } },
+    [enterprise]: { provider: 'github', url: 'https://git.example.co.jp/team/enterprise', owner: { host: 'git.example.co.jp', owner: 'team' } },
+    [configured]: { provider: 'github', url: 'https://code.example.com/team/configured', owner: { host: 'code.example.com', owner: 'team' } },
+    [github]: { provider: 'github', url: 'https://github.com/o/github', owner: { host: 'github.com', owner: 'o' } },
+    [gitlab]: { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'g/sub' } },
+    [bitbucket]: { provider: 'bitbucket', url: null, owner: { host: 'bitbucket.example.com', owner: 'proj' } },
+    [other]: { provider: 'other', url: null, owner: null },
   });
   // ssh for the SSH remotes only; gh for git.example.co.jp and git.example.com.
   assert.deepEqual(asked, { ssh: ['github-work', 'gitlab-work'], gh: 2 });
@@ -514,10 +517,10 @@ test('readRemotes reads where the remote of each folder is, and leaves out those
   assert.deepEqual(
     [...found].sort(([a], [b]) => a.localeCompare(b)),
     [
-      [github, { provider: 'github', url: 'https://github.com/o/a' }],
-      [elsewhere, { provider: 'gitlab', url: null }],
-      [local, { provider: 'none', url: null }],
-      [nearby, { provider: 'other', url: null }],
+      [github, { provider: 'github', url: 'https://github.com/o/a', owner: { host: 'github.com', owner: 'o' } }],
+      [elsewhere, { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'o' } }],
+      [local, { provider: 'none', url: null, owner: null }],
+      [nearby, { provider: 'other', url: null, owner: null }],
     ],
   );
 });
@@ -535,6 +538,22 @@ test('providerOf tells GitHub, GitLab and Bitbucket from other remotes', () => {
   assert.equal(providerOf('/srv/git/r.git'), 'other');
   // GitHub has owner/name only.
   assert.equal(providerOf('https://github.com/o/r/extra'), 'other');
+});
+
+test('ownerOf tells whose a repository is on GitHub, GitLab and Bitbucket, and on no other host', () => {
+  const owner = (remote, options = {}) => remoteOf(remoteParts(remote), options).owner;
+  assert.deepEqual(owner('git@github.com:Sunset/novel-writing.git'), { host: 'github.com', owner: 'Sunset' });
+  assert.deepEqual(owner('https://github.example.com:8443/team/app'), { host: 'github.example.com', owner: 'team' }, 'the port is not the host\'s');
+  assert.deepEqual(owner('ssh://git@ssh.github.com:443/o/r.git'), { host: 'github.com', owner: 'o' });
+  assert.deepEqual(owner('git@work:o/r.git', { hostname: 'github.com' }), { host: 'github.com', owner: 'o' });
+  assert.deepEqual(owner('https://gitlab.com/group/sub/project.git'), { host: 'gitlab.com', owner: 'group/sub' });
+  assert.deepEqual(owner('ssh://git@bitbucket.example.com:7999/proj/repo.git'), { host: 'bitbucket.example.com', owner: 'proj' });
+  assert.deepEqual(owner('https://bitbucket.example.com/scm/proj/repo.git'), { host: 'bitbucket.example.com', owner: 'proj' });
+  assert.deepEqual(owner('https://bitbucket.org/team/repo.git'), { host: 'bitbucket.org', owner: 'team' });
+  assert.equal(owner('https://codeberg.org/o/r.git'), null);
+  assert.equal(owner('C:\\repos\\r'), null);
+  assert.equal(ownerOf(null, 'github'), null);
+  assert.equal(ownerOf(remoteParts('https://gitlab.com/project'), 'gitlab'), null, 'a path of one name has no owner');
 });
 
 test('visibilityGroups asks gh once for each place it runs and host, with the folders it asks for', () => {

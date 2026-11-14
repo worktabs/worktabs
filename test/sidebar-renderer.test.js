@@ -53,6 +53,10 @@ async function loadSidebar({ localStorageValues = {}, host, frames = null }) {
   return { document, window };
 }
 
+// A section's repository rows, without its owners' rows (.row.repo too, as in the section of the
+// repositories not cloned).
+const repoRows = (document, section) => document.querySelectorAll(`#${section}-tree .row.repo`).filter((row) => !row.classList.contains('owner'));
+
 test('subagent rows show names and roles, and completed children do not stay green', async () => {
   const folder = path.join(path.parse(process.cwd()).root, 'repos', 'worktabs');
   const store = new ConversationStore();
@@ -281,15 +285,15 @@ test('other repositories show only their own rows, at start and once their last 
   await new Promise((resolve) => setImmediate(resolve));
   const worktreeRows = (section) => document.querySelectorAll(`#${section}-tree .row.worktree`).length;
   assert.equal(worktreeRows('open'), 1);
-  assert.equal(document.querySelectorAll('#other-tree .row.repo').length, 1);
+  assert.equal(repoRows(document, 'other').length, 1);
   assert.equal(worktreeRows('other'), 0);
 
   update(snapshot([]));
-  assert.equal(document.querySelectorAll('#other-tree .row.repo').length, 2);
+  assert.equal(repoRows(document, 'other').length, 2);
   assert.equal(worktreeRows('other'), 0);
 
   // A click still shows a repository's worktrees, and they stay while it has no tab.
-  document.querySelector('#other-tree .row.repo').click();
+  repoRows(document, 'other')[0].click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(worktreeRows('other'), 1);
   update(snapshot([]));
@@ -298,6 +302,78 @@ test('other repositories show only their own rows, at start and once their last 
   update(snapshot([tab]));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(worktreeRows('open'), 1);
+});
+
+test('both sections show their repositories under owner rows, which fold apart in each section', async (t) => {
+  const tool = 'C:\\ghq\\github.com\\acme\\tool';
+  const api = '\\\\wsl.localhost\\Ubuntu\\home\\me\\ghq\\github.com\\acme\\api';
+  const novel = 'C:\\project\\novel-writing';
+  const mine = 'C:\\ghq\\github.com\\me\\dotfiles';
+  const scratch = 'C:\\work\\scratch';
+  const repo = (folder) => ({ path: folder, name: folder.split('\\').pop(), owner: folder.split('\\').at(-2), git: true, sources: ['ghq'] });
+  const opened = (folder) => ({ id: folder, folder, repo: folder, branch: 'main', server: 'running', agent: null, conversations: [] });
+  const snapshot = (tabs) => ({ tabs, removing: [], repoUsed: {}, usage: [] });
+  let update;
+  const host = new Proxy({
+    getState: async () => snapshot([opened(tool)]),
+    getRepos: async () => ({
+      seq: 1, reading: false, repos: [tool, api, novel, mine, scratch].map(repo),
+      // The remote of the folder outside ghq is read; the others' are not yet.
+      owners: { [novel.toLowerCase()]: { host: 'github.com', owner: 'sunsetoftanahlot' } },
+      ownerTypes: { 'github.com/me': 'user' },
+    }),
+    getWorktrees: async (folder) => [{ path: folder, branch: 'main', main: true }],
+    github: async () => null,
+    pullRequests: async () => ({ pulls: {}, heads: {} }),
+    onUpdate: (callback) => { update = callback; },
+  }, { get: (target, key) => target[key] || (() => {}) });
+  // The last run folded one's own account among the other repositories.
+  const { document, window } = await loadSidebar({ host, localStorageValues: { otherOwnersFolded: ['github.com/me'] } });
+  t.after(() => window.dispatchEvent({ type: 'beforeunload' }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const owners = (section) => document.querySelectorAll(`#${section}-tree .row.owner`);
+  const names = (rows) => rows.map((row) => row.querySelector('.name').textContent);
+  const ownerRow = (section, name) => owners(section).find((row) => row.querySelector('.name').textContent === name);
+
+  assert.deepEqual(names(owners('open')), ['acme']);
+  assert.deepEqual(names(repoRows(document, 'open')), ['tool']);
+  // One's own account first, then the others by name; the folder outside ghq under its remote's
+  // owner, and the one with neither last.
+  assert.deepEqual(names(owners('other')), ['me', 'acme', 'sunsetoftanahlot', 'No owner']);
+  assert.equal(ownerRow('other', 'me').getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(names(repoRows(document, 'other')), ['api', 'novel-writing', 'scratch']);
+  assert.equal(ownerRow('other', 'acme').querySelector('.owner-count').textContent, '1');
+  assert.match(ownerRow('other', 'No owner').title, /No remote on GitHub, GitLab, or Bitbucket, and not in a ghq folder/);
+  assert.equal(document.getElementById('other-count').textContent, '4');
+  // The owner is on the row above; the WSL tag stays on the repository's.
+  for (const row of [...repoRows(document, 'open'), ...repoRows(document, 'other')]) assert.equal(row.querySelector('.detail'), null);
+  assert.equal(repoRows(document, 'other')[0].querySelector('.tag').textContent, 'WSL');
+
+  // Folding acme in the open section leaves it as it is in the other, and shows the state of its tabs.
+  ownerRow('open', 'acme').click();
+  assert.equal(ownerRow('open', 'acme').getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(repoRows(document, 'open'), []);
+  assert.ok(ownerRow('open', 'acme').querySelector('.dot.idle'));
+  assert.deepEqual(names(repoRows(document, 'other')), ['api', 'novel-writing', 'scratch']);
+
+  // A tab opening in WSL's acme/api brings it under the same owner, which unfolds to show it.
+  update(snapshot([opened(tool), opened(api)]));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(names(owners('open')), ['acme']);
+  assert.equal(ownerRow('open', 'acme').getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(names(repoRows(document, 'open')), ['api', 'tool']);
+  assert.deepEqual(names(owners('other')), ['me', 'sunsetoftanahlot', 'No owner']);
+
+  // The filter matches an owner's name, and shows all its repositories.
+  const filter = document.getElementById('filter');
+  filter.value = 'sunset';
+  filter.dispatchEvent({ type: 'input' });
+  assert.deepEqual(names(owners('other')), ['sunsetoftanahlot']);
+  assert.deepEqual(names(repoRows(document, 'other')), ['novel-writing']);
+  assert.equal(document.getElementById('open-section').hidden, true);
+  filter.value = 'acme';
+  filter.dispatchEvent({ type: 'input' });
+  assert.deepEqual(names(repoRows(document, 'open')), ['api', 'tool']);
 });
 
 test('a repository whose remote git failed to read keeps its GitHub icon, and is not read again on every render', async (t) => {
@@ -357,8 +433,8 @@ test('startup replies cannot replace newer open or closed tab state', async (t) 
         await new Promise((resolve) => setImmediate(resolve));
 
         assert.equal(document.getElementById('open-section').hidden, !open);
-        assert.equal(document.querySelectorAll('#open-tree .row.repo').length, open ? 1 : 0);
-        assert.equal(document.querySelectorAll('#other-tree .row.repo').length, open ? 0 : 1);
+        assert.equal(repoRows(document, 'open').length, open ? 1 : 0);
+        assert.equal(repoRows(document, 'other').length, open ? 0 : 1);
         assert.equal(document.querySelectorAll('#open-tree .row.worktree').length, open ? 1 : 0);
       });
     }

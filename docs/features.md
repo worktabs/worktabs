@@ -32,7 +32,7 @@ More: [usage.md, "Top bar"](usage.md#top-bar), ["Filter"](usage.md#filter), and 
 
 ![The sidebar tree: api-server and web-app under "Open repositories", with their worktrees and the Claude Code and Codex conversations of the open ones; docs-site and mobile-app, with a lock, under "Other repositories"; "Repositories not cloned" folded with 3](images/features/sidebar-tree.png)
 
-"Open repositories" lists the repositories with open tabs. "Other repositories" lists the rest, from `ghq list` and the ones you added. "Repositories not cloned" lists your GitHub repositories that are not on this computer yet ([below](#repositories-not-cloned)).
+"Open repositories" lists the repositories with open tabs. "Other repositories" lists the rest, from `ghq list` and the ones you added. Both put the repositories under a row for their owner, your own accounts first. "Repositories not cloned" lists your GitHub repositories that are not on this computer yet ([below](#repositories-not-cloned)).
 
 - Click a worktree to open it as a tab, or to switch to its tab if it is open.
 - Add a worktree with "＋" on a repository row, from a GitHub issue or PR, or from a sentence that says what to do. Remove one with the trash button on its row ([worktrees.md](worktrees.md)).

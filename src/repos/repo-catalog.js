@@ -170,6 +170,9 @@ const isRemoteEntry = (remote) =>
   (remote.url === null || typeof remote.url === 'string') &&
   (remote.visibility === null || VISIBILITY_NAMES.includes(remote.visibility));
 
+// Whose a repository is on its remote's host (ownerOf in github-remote.js).
+const isRemoteOwner = (owner) => Boolean(owner) && typeof owner.host === 'string' && typeof owner.owner === 'string';
+
 const isOwnedEntry = (repo) =>
   Boolean(repo) &&
   ['host', 'owner', 'name', 'url', 'description'].every((key) => typeof repo[key] === 'string') &&
@@ -181,10 +184,10 @@ const isOwnedEntry = (repo) =>
 // The lists of the last run (repos.json), which the side bar shows at start while it reads them
 // again: { repos, worktrees, remotes, owned }, with the repository list as repoCatalog gives it;
 // by lowercase repository path the worktrees as gitWorktrees gives them and where the
-// repository's remote is ({ provider, url, visibility, current }, see readVisibilities in
-// main.js); and the repositories of the accounts gh is signed in to (readOwnedRepos in
-// github.js), of which the side bar shows those not cloned. null when there is none, or it
-// cannot be read; entries of another shape are left out. What versions before kept as `github`
+// repository's remote is ({ provider, url, owner, visibility, current }, see readVisibility in
+// repository-service.js; without `owner` when a version before kept it); and the repositories of
+// the accounts gh is signed in to (readOwnedRepos in github.js), of which the side bar shows those
+// not cloned. null when there is none, or it cannot be read; entries of another shape are left out. What versions before kept as `github`
 // is not read: those went by the remote's host alone, which takes an SSH host for itself (a Host
 // github.com-work in ~/.ssh/config for a host of GitHub of its own).
 function readRepoCache(file) {
@@ -204,7 +207,10 @@ function readRepoCache(file) {
     if (!isRemoteEntry(entry)) continue;
     // Where GitHub has a repository that was renamed or moved since it was cloned; absent before.
     const current = typeof entry.current === 'string' ? entry.current : null;
-    remotes[key.toLowerCase()] = { provider: entry.provider, url: entry.url, visibility: entry.visibility, current };
+    const remote = { provider: entry.provider, url: entry.url, visibility: entry.visibility, current };
+    // Whose the repository is; left absent from a version before, so that it is read again.
+    if (entry.owner === null || isRemoteOwner(entry.owner)) remote.owner = entry.owner && { host: entry.owner.host, owner: entry.owner.owner };
+    remotes[key.toLowerCase()] = remote;
   }
   const owned = Array.isArray(data.owned) ? data.owned.filter(isOwnedEntry) : [];
   return { repos: data.repos.filter(isRepoEntry), worktrees, remotes, owned };

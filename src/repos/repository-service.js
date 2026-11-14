@@ -3,11 +3,21 @@
 const { addToCatalog } = require('./worktrees');
 const { clonedKeys, mergeOwned, repoKey, unclonedGroups } = require('./clone');
 const { visibilityGroups } = require('./github');
+const { ownerOf, remoteParts } = require('./github-remote');
 const { parseWslPath } = require('../wsl/wsl');
 const { mapLimit, oneLine } = require('../util');
 
 // How many gh calls for visibility run at once.
 const VISIBILITY_AT_ONCE = 4;
+
+// Whose a listed repository is on its remote's host ({ host, owner }), for the side bar's owner
+// rows: where GitHub has it now, for one moved to another owner since it was cloned; else as its
+// remote says. A remote on GitHub kept without its owner (one just cloned, or kept by a version
+// before) has it in its address. null for a remote on another host, and for none.
+function remoteOwner(remote) {
+  const github = (url) => (url ? ownerOf(remoteParts(url), 'github') : null);
+  return github(remote.current) || remote.owner || github(remote.url);
+}
 
 class RepositoryService {
   constructor(deps, saved = null) {
@@ -49,12 +59,18 @@ class RepositoryService {
   message() {
     const visibility = [...this.remotes].filter(([, remote]) => remote.visibility).map(([key, remote]) => [key, remote.visibility]);
     const providers = [...this.remotes].map(([key, remote]) => [key, remote.provider]);
+    const owners = [...this.remotes].map(([key, remote]) => [key, remoteOwner(remote)]).filter(([, owner]) => owner);
+    // The owners of the accounts gh is signed in to ('user') and of their organizations ('org'),
+    // which the side bar puts first.
+    const ownerTypes = this.owned.map((repo) => [`${repo.host}/${repo.owner}`.toLowerCase(), repo.type]);
     return {
       seq: ++this.seq,
       repos: this.list,
       reading: Boolean(this.catalogRead),
       visibility: Object.fromEntries(visibility),
       providers: Object.fromEntries(providers),
+      owners: Object.fromEntries(owners),
+      ownerTypes: Object.fromEntries(ownerTypes),
       uncloned: this.uncloned(),
       approved: Object.fromEntries(this.approved),
     };
@@ -156,17 +172,22 @@ class RepositoryService {
     const listed = (this.list || []).filter((repo) => repo.git);
     const again = this.remotesStale;
     this.remotesStale = false;
-    const unread = listed.filter((repo) => again || !this.remotes.has(repo.path.toLowerCase()));
+    // A remote on GitLab or Bitbucket kept by a version before the owners were is read once more,
+    // for its owner: its address is not kept.
+    const unread = listed.filter((repo) => {
+      const known = this.remotes.get(repo.path.toLowerCase());
+      return again || !known || (known.owner === undefined && ['gitlab', 'bitbucket'].includes(known.provider));
+    });
     const before = new Map(unread.map((repo) => [repo.path.toLowerCase(), this.remotes.get(repo.path.toLowerCase())]));
     const read = await this.deps.remotes(unread.map((repo) => repo.path));
-    for (const [folder, { provider, url }] of read) {
+    for (const [folder, { provider, url, owner = null }] of read) {
       const key = folder.toLowerCase();
       if (!(this.list || []).some((repo) => repo.path.toLowerCase() === key)) continue;
       if (this.remotes.get(key) !== before.get(key)) continue;
       const known = this.remotes.get(key);
       // The same repository keeps its mark until GitHub answers.
       const same = Boolean(known) && known.url === url;
-      this.remotes.set(key, { provider, url, visibility: same ? known.visibility : null, current: same ? known.current : null });
+      this.remotes.set(key, { provider, url, owner, visibility: same ? known.visibility : null, current: same ? known.current : null });
     }
     if (read.size) {
       this.save();

@@ -134,3 +134,44 @@ test('collapsed repositories preserve urgency, visibility accessibility, and dis
   row.click();
   assert.deepEqual(calls, [['closeAll', group], ['addWorktree', group.path], ['toggle', group]]);
 });
+
+test('an owner row says whose the repositories under it are, and folded, the most urgent state of their tabs', () => {
+  const { rows, calls } = setup();
+  const lines = ['Repositories: 2'];
+  const toggle = () => calls.push(['toggle owner']);
+  const mine = rows.renderOwner({ key: 'github.com/me', host: 'github.com', owner: 'me', type: 'user' }, { count: 2, expanded: true, lines, toggle });
+  assert.equal(mine.className, 'row repo owner');
+  assert.equal(mine.getAttribute('aria-expanded'), 'true');
+  assert.ok(mine.querySelector('.icon.person'));
+  assert.equal(mine.querySelector('.detail'), null, 'github.com goes without saying');
+  assert.equal(mine.querySelector('.owner-count').textContent, '2');
+  assert.equal(mine.querySelector('.dot'), null);
+  assert.equal(mine.title, 'me (your account)\ngithub.com\nRepositories: 2');
+  // Another owner, known to be no account of one's own, on another host; folded with a tab waiting.
+  const other = rows.renderOwner({ key: 'gitlab.com/team', host: 'gitlab.com', owner: 'team' }, { count: 1, expanded: false, lines, toggle, badge: 'waiting' });
+  assert.ok(other.querySelector('.icon.organization'));
+  assert.equal(other.querySelector('.detail').textContent, 'gitlab.com');
+  assert.ok(other.querySelector('.dot.waiting'));
+  assert.equal(other.classList.contains('attention'), true);
+  assert.equal(other.title, 'team\ngitlab.com\nRepositories: 2\nWaiting for approval');
+  // Those without an owner, and without a menu: a right click does nothing of its own.
+  const none = rows.renderOwner({ key: '<none>', host: '', owner: 'No owner', none: true }, { count: 3, expanded: true, lines: ['No remote', 'Repositories: 3'], toggle });
+  assert.ok(none.querySelector('.icon.folder'));
+  assert.equal(none.title, 'No remote\nRepositories: 3');
+  const menu = { type: 'contextmenu' };
+  none.dispatchEvent(menu);
+  assert.equal(menu.defaultPrevented, undefined);
+  none.click();
+  assert.deepEqual(calls, [['toggle owner']]);
+});
+
+test('a repository row leaves its owner to the owner row above it', () => {
+  const { rows } = setup();
+  const group = { key: 'repo', path: 'C:\\ghq\\github.com\\acme\\repo', name: 'repo', owner: 'acme', git: true, sources: ['ghq'], tabs: [] };
+  const row = rows.renderGroup(group, true, true);
+  assert.equal(row.querySelector('.detail'), null);
+  assert.doesNotMatch(row.textContent, /acme/);
+  const wsl = rows.renderGroup({ ...group, path: '\\\\wsl.localhost\\Ubuntu\\home\\me\\ghq\\github.com\\acme\\repo' }, true, true);
+  assert.equal(wsl.querySelector('.tag').textContent, 'WSL', 'the WSL tag stays on the repository row');
+  assert.equal(wsl.querySelector('.detail'), null);
+});

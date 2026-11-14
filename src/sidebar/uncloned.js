@@ -8,7 +8,7 @@
  * @property {any} state the page's state (sidebar.js)
  * @property {Pick<SidebarHost, 'cloneRepo' | 'showUnclonedMenu' | 'showOwnerMenu'>} host
  * @property {Pick<Document, 'getElementById'>} document
- * @property {{ el: Function, icon: Function, logo: Function, rowButton: Function }} dom
+ * @property {{ el: Function, logo: Function, rowButton: Function, ownerRow: Function }} dom
  * @property {{ shownOwners: () => Array<{ group: any, repos: any[], expanded: boolean }>, visibilityMark: Function }} select
  * @property {{ toggleOwner: (group: any) => void }} actions
  * @property {Record<string, { icon?: string, label: string }>} visibilities who can see a repository (VISIBILITIES in sidebar.js)
@@ -17,7 +17,7 @@
 
 /** @param {UnclonedSectionOptions} options */
 function createUnclonedSection({ state, host, document, dom, select, actions, visibilities, t }) {
-  const { el, icon, logo, rowButton } = dom;
+  const { el, logo, rowButton, ownerRow } = dom;
 
   // A date, for when a repository was last pushed to.
   function dateText(ms) {
@@ -25,29 +25,16 @@ function createUnclonedSection({ state, host, document, dom, select, actions, vi
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
   }
 
-  // An owner: whose repositories are under it, with how many. Another host than github.com (GitHub
-  // Enterprise) goes beside the name.
+  // An owner (renderOwner in rows.js, as the other sections' owners): whose repositories are
+  // under it, with how many. Its menu hides it from this section.
   function renderOwner(group, count, expanded) {
-    const org = group.type === 'org';
-    const row = el('div', 'row repo owner');
-    row.setAttribute('role', 'treeitem');
-    row.setAttribute('aria-expanded', String(expanded));
-    const mark = icon(org ? 'organization' : 'person');
-    mark.classList.add('provider');
-    row.append(mark, el('span', 'name', group.owner));
-    if (group.host !== 'github.com') row.append(el('span', 'detail', group.host));
-    row.append(el('span', 'owner-count', String(count)));
-    row.title = [
-      org ? t('{owner} (organization)', { owner: group.owner }) : t('{owner} (your account)', { owner: group.owner }),
-      group.host,
-      t('Repositories not cloned: {count}', { count }),
-    ].join('\n');
-    row.addEventListener('click', () => actions.toggleOwner(group));
-    row.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      host.showOwnerMenu(group.key);
+    return ownerRow(group, {
+      count,
+      expanded,
+      lines: [t('Repositories not cloned: {count}', { count })],
+      toggle: () => actions.toggleOwner(group),
+      menu: () => host.showOwnerMenu(group.key),
     });
-    return row;
   }
 
   // A repository not cloned: the button clones it (on Windows, asking first whether into Windows or

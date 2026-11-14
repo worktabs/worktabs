@@ -73,8 +73,8 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     }
     const approved = approvedOf(group);
     if (approved.length) title.push(...approvedLines(approved));
+    // Its owner is the row above it (renderOwner).
     if (!group.other) appendWslTag(row, group.path);
-    if (group.owner) row.append(el('span', 'detail', group.owner));
     if (!expanded && group.tabs.length) {
       const badge = mostUrgent(group.tabs);
       row.append(el('span', `dot ${badge}`));
@@ -94,6 +94,44 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     row.title = title.join('\n');
     row.addEventListener('click', () => actions.toggle(group));
     return row;
+  }
+
+  // An owner's row, with the rows of its repositories under it, in every section: whose they are
+  // (one's own account, an organization, another owner, or none known: `owner.none`), with how
+  // many. Another host than github.com (GitHub Enterprise, GitLab) goes beside the name. `lines`:
+  // the rest of its title. `badge`: folded, the most urgent state of the open tabs under it, as a
+  // folded repository shows. `menu`: what its context menu does, if it has one.
+  function renderOwner(owner, { count, expanded, lines, toggle, badge = null, menu = null }) {
+    const row = el('div', 'row repo owner');
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-expanded', String(expanded));
+    const mark = icon(owner.none ? 'folder' : owner.type === 'user' ? 'person' : 'organization');
+    mark.classList.add('provider');
+    row.append(mark, el('span', 'name', owner.owner));
+    if (owner.host && owner.host !== 'github.com') row.append(el('span', 'detail', owner.host));
+    const title = owner.none ? [...lines] : [ownerLine(owner), owner.host, ...lines];
+    if (badge) {
+      row.append(el('span', `dot ${badge}`));
+      if (badge === 'waiting') row.classList.add('attention');
+      title.push(LABELS[badge]);
+    }
+    row.append(el('span', 'owner-count', String(count)));
+    row.title = title.join('\n');
+    row.addEventListener('click', toggle);
+    if (menu) {
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        menu();
+      });
+    }
+    return row;
+  }
+
+  // Who an owner is, in its row's title.
+  function ownerLine(owner) {
+    if (owner.type === 'org') return t('{owner} (organization)', { owner: owner.owner });
+    if (owner.type === 'user') return t('{owner} (your account)', { owner: owner.owner });
+    return owner.owner;
   }
 
   // The button that closes all the tabs a group shows (closeTabsTogether in main.js).
@@ -321,7 +359,7 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     return row;
   }
 
-  return { renderGroup, renderFolder, renderConversation, visibilityMark };
+  return { renderOwner, renderGroup, renderFolder, renderConversation, visibilityMark };
 }
 
 if (typeof module === 'object') module.exports = { createSidebarRows };

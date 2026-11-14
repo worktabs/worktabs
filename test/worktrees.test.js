@@ -619,9 +619,10 @@ test('readRepoCache reads what writeRepoCache wrote, and null for a missing or b
     repos: [listed(path.resolve('/repos/a'), 'ghq')],
     worktrees: { [a]: [{ path: path.resolve('/repos/a'), branch: 'main', main: true, locked: false }] },
     remotes: {
-      [a]: { provider: 'github', url: 'https://github.com/o/a', visibility: 'private', current: null },
+      [a]: { provider: 'github', url: 'https://github.com/o/a', owner: { host: 'github.com', owner: 'o' }, visibility: 'private', current: null },
       // Renamed on GitHub since it was cloned.
       [path.resolve('/repos/b').toLowerCase()]: { provider: 'github', url: 'https://github.com/o/b', visibility: 'public', current: 'https://github.com/p/b2' },
+      [path.resolve('/repos/c').toLowerCase()]: { provider: 'other', url: null, owner: null, visibility: null, current: null },
     },
     owned: [OWNED],
   };
@@ -673,6 +674,8 @@ test('readRepoCache leaves out entries of another shape', (t) => {
         'c:\\f': { provider: 'sourceforge', url: null, visibility: null },
         'c:\\g': { url: null, visibility: null },
         'c:\\h': { provider: 'github', url: 'https://github.com/o/h', visibility: null, current: 42 },
+        'c:\\i': { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 7 }, visibility: null },
+        'c:\\j': { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'g', extra: true }, visibility: null },
       },
       owned: [
         OWNED,
@@ -699,6 +702,9 @@ test('readRepoCache leaves out entries of another shape', (t) => {
       'c:\\b': { provider: 'gitlab', url: null, visibility: null, current: null },
       // A current address that is not one is dropped, not the entry.
       'c:\\h': { provider: 'github', url: 'https://github.com/o/h', visibility: null, current: null },
+      // So is an owner that is not one, which leaves it to be read again.
+      'c:\\i': { provider: 'gitlab', url: null, visibility: null, current: null },
+      'c:\\j': { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'g' }, visibility: null, current: null },
     },
     owned: [OWNED, { ...OWNED, name: 'b', pushedAt: null, visibility: null }],
   });

@@ -8,6 +8,7 @@ const { attachSidebarResize } = require('../src/sidebar/resize');
 const { createGithubBar } = require('../src/sidebar/github-bar');
 const { createIcons, ICONS, LOGOS } = require('../src/sidebar/icons');
 const { createUnclonedSection } = require('../src/sidebar/uncloned');
+const { createSidebarRows } = require('../src/sidebar/rows');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -271,8 +272,10 @@ test('the section of the repositories not cloned lists them under their owners, 
   let shown = [{ group: me, repos: [tool], expanded: true }, { group: org, repos: [site], expanded: true }];
   const calls = [];
   const host = new Proxy({}, { get: (_target, name) => (...args) => calls.push([name, ...args]) });
+  // The owner rows are those of the other sections (rows.js).
+  const { renderOwner } = createSidebarRows({ state, host, dom: { el, icon, logo, rowButton }, select: {}, actions: {}, text: { LABELS: {} }, t });
   const section = createUnclonedSection({
-    state, host, document, dom: { el, icon, logo, rowButton },
+    state, host, document, dom: { el, logo, rowButton, ownerRow: renderOwner },
     select: { shownOwners: () => shown, visibilityMark: ({ label }) => el('span', 'visibility', label) },
     actions: { toggleOwner: (group) => calls.push(['toggle', group.key]) },
     visibilities: { public: { label: 'Public' }, private: { icon: 'lock', label: 'Private' } }, t,
