@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const { createExtensionManagement } = require('../src/code-server/extension-management');
 const { UpdateCoordinator } = require('../src/code-server/update-coordinator');
+const { tempDir } = require('./support');
 
 const candidate = (version = '2.0.0') => ({ id: 'openai.chatgpt', name: 'Codex', version,
   kind: 'vscode', location: 'desktop/codex', targetPlatform: 'win32-x64', engine: '^1.100.0',
@@ -114,6 +117,91 @@ test('local imports stage the existing install, probe before committing, then ru
   assert.equal(committed[3][0].version, '1.0.0');
   assert.equal(coordinator.busy, false);
   assert.deepEqual(coordinator.state.items, gallery);
+});
+
+// A Codex import while tab 'busy' runs Claude work, which the coordinator may leave running. The
+// extensions folder is a real one, and installing works as in code-server: the new version takes
+// the place of every listed version of the extension, the one it replaces is marked obsolete, and
+// its own mark goes (code-server 4.145.2 did all of this when tried).
+function codexBatch(t, overrides = {}) {
+  const dir = tempDir(t);
+  const obsolete = path.join(dir, '.obsolete');
+  const readObsolete = () => (fs.existsSync(obsolete) ? JSON.parse(fs.readFileSync(obsolete, 'utf8')) : {});
+  const listed = () => JSON.parse(fs.readFileSync(path.join(dir, 'extensions.json'), 'utf8')).map((entry) => entry.version);
+  const activate = (version) => {
+    fs.mkdirSync(path.join(dir, `openai.chatgpt-${version}`), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'extensions.json'),
+      JSON.stringify([{ identifier: { id: 'openai.chatgpt' }, version, relativeLocation: `openai.chatgpt-${version}` }]));
+  };
+  activate('1.0.0');
+  const context = setup({ localExtensions: () => [candidate('1.0.0')], ...overrides });
+  const { coordinator, calls, config, servers } = context;
+  config.resolvedExtensionsDir = dir;
+  servers.installExtension = async (file) => {
+    calls.push(['install', file]);
+    const [active] = listed();
+    const version = file === 'snapshot/old.vsix' ? '1.0.0' : '2.0.0';
+    const marks = { ...readObsolete(), [`openai.chatgpt-${active}-win32-x64`]: true };
+    delete marks[`openai.chatgpt-${version}-win32-x64`];
+    fs.writeFileSync(obsolete, JSON.stringify(marks));
+    activate(version);
+  };
+  const tab = { id: 'busy', name: 'Busy', server: 'running' };
+  let busy = true;
+  Object.assign(coordinator.deps, {
+    tabs: () => new Map([[tab.id, tab]]),
+    risks: async (scope) => {
+      calls.push(['risks', scope?.agent || 'all']);
+      return scope ? { busy: [], deferrable: [tab] } : { busy: busy ? [tab.name] : [], busyTabs: busy ? [tab] : [] };
+    },
+    sleep: async () => { busy = false; },
+    pause: (each) => { calls.push(['pause', each.id]); each.server = 'stopped'; },
+    start: async (each) => { calls.push(['start', each.id]); each.server = 'running'; },
+    restartDetail: () => 'restart', settleDetail: () => 'settle',
+  });
+  return { ...context, readObsolete, listed };
+}
+
+test('a Codex batch leaves a tab busy with other work on the old version, kept on disk until it restarts', async (t) => {
+  let atProbe;
+  const context = codexBatch(t, { probeInstance: async () => {
+    context.calls.push(['probe']);
+    atProbe = { listed: context.listed(), obsolete: context.readObsolete() };
+  } });
+  const { service, calls, scheduled, coordinator, readObsolete, listed } = context;
+  const { key } = service.rememberCandidate(candidate());
+  await service.queueExtensionImports([key], 'win32-x64');
+  await scheduled.shift()();
+  assert.deepEqual(calls.filter(([kind]) => ['risks', 'pause', 'install', 'probe', 'start'].includes(kind)).map((call) => call.join(' ')),
+    ['risks codex', 'install snapshot/2.0.0.vsix', 'probe', 'risks all', 'risks all', 'pause busy', 'start busy']);
+  // The probe's code-server runs 2.0.0 and deletes nothing. Once the tab has restarted, 1.0.0 goes.
+  assert.deepEqual(atProbe, { listed: ['2.0.0', '1.0.0'], obsolete: {} });
+  assert.deepEqual(listed(), ['2.0.0']);
+  assert.deepEqual(readObsolete(), { 'openai.chatgpt-1.0.0-win32-x64': true });
+  assert.equal(coordinator.state.status, 'done');
+});
+
+test('a Codex batch that goes back stops the busy tab first, and does not mark the version it goes back to', async (t) => {
+  const context = codexBatch(t, { probeInstance: async () => { throw new Error('probe failed'); } });
+  const { service, records, calls, scheduled, coordinator, readObsolete, listed } = context;
+  records.push({ ...candidate('1.0.0'), file: 'snapshot/old.vsix', source: { kind: 'vscode' } });
+  const { key } = service.rememberCandidate(candidate());
+  await service.queueExtensionImports([key], 'win32-x64');
+  await scheduled.shift()();
+  assert.deepEqual(calls.filter(([kind]) => ['pause', 'install', 'start'].includes(kind)).map((call) => call.join(' ')),
+    ['install snapshot/2.0.0.vsix', 'pause busy', 'install snapshot/old.vsix', 'start busy']);
+  assert.equal(coordinator.state.status, 'failed');
+  assert.deepEqual(listed(), ['1.0.0']);
+  assert.deepEqual(readObsolete(), { 'openai.chatgpt-2.0.0-win32-x64': true });
+});
+
+test('a Codex batch that goes back to an older version waits for every busy tab', async (t) => {
+  const context = codexBatch(t, { localExtensions: () => [candidate('3.0.0')] });
+  const { service, calls, scheduled } = context;
+  const { key } = service.rememberCandidate(candidate());
+  await service.queueExtensionImports([key], 'win32-x64');
+  await scheduled.shift()();
+  assert.deepEqual(calls.filter(([kind]) => kind === 'risks').map((call) => call.join(' ')), ['risks all']);
 });
 
 test('a failed local probe restores the previous snapshot and never starts a gallery follow-up', async () => {

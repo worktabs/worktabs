@@ -363,13 +363,17 @@ class ExtensionImports {
   }
 }
 
-async function applyImportBatch({ records, previous, install, uninstall, probe, commit }) {
+// `installed()`: once the new versions are installed, before the probe starts a code-server.
+// `restoring()`: before the previous versions go back.
+async function applyImportBatch({ records, previous, install, uninstall, probe, commit, installed = async () => {}, restoring = async () => {} }) {
   const applied = [];
   try {
     for (const record of records) { applied.push(record); await install(record); }
+    await installed();
     await probe();
     await commit();
   } catch (error) {
+    await restoring();
     const failures = [];
     for (const record of applied.reverse()) {
       try {

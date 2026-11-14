@@ -2,8 +2,9 @@
 const crypto = require('crypto');
 const semver = require('semver');
 const { t } = require('../i18n');
-const { leftOutExtensions } = require('../agents/agents');
+const { agentFor, leftOutExtensions } = require('../agents/agents');
 const imports = require('./extension-imports');
+const obsolete = require('./obsolete');
 
 const PROTECTED_IDS = ['worktabs.worktabs-helper'];
 const EXTENSION_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i;
@@ -289,22 +290,44 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     return { records, previous };
   }
 
+  // Whether an update item replaces a version with a newer one, or installs a first one.
+  const upgrade = (item) => !item.from || (semver.valid(item.from) && semver.valid(item.to) && semver.gt(item.to, item.from));
+
   // `prepare(report)` resolves the staged { records, previous }.
   async function applyExtensionImports(run, prepare, target, followUp) {
     const servers = getServers();
+    const local = target === localTarget();
+    const dir = config.resolvedExtensionsDir;
+    // The versions kept on disk for the tabs left running on them (obsolete.js).
+    let held = [];
     const succeeded = await updateCoordinator.execute(run, {
       prepare,
       // Linux snapshots install when a WSL tab next starts; the running tabs do not use them.
-      shared: target === localTarget(),
+      shared: local,
+      // A batch of one agent's extensions (Codex, with Codex Audio) does not wait for the tabs
+      // where that agent has no turn in progress (#62). Only when it updates them: the version
+      // those tabs keep running stays listed beside the new one, and code-server runs the newest.
+      agent: local && run.items.every(upgrade) ? agentFor(run.items.map((item) => item.id)) : null,
       applying: t('Installing the imported extensions'),
       // applyImportBatch has put the previous versions back, unless that failed too (the cause).
       failure: (error) => error.cause ? error.message : t('{error}. The previous versions stay.', { error: error.message }),
-      apply: async ({ records, previous }) => {
-        if (target === localTarget()) {
+      apply: async ({ records, previous }, _report, { deferred = [], settle = async () => {} } = {}) => {
+        if (local) {
+          const ids = records.map((record) => record.id);
+          const before = deferred.length ? obsolete.readEntries(dir).filter((entry) => ids.includes(String(entry?.identifier?.id).toLowerCase())) : [];
           await applyImportBatch({ records, previous,
             install: (record) => servers.installExtension(extensionImports.package(record)),
             uninstall: (id) => servers.uninstallExtension(id),
-            probe: () => probeInstance(records.map((record) => record.id)),
+            // The probe and the restarted tabs start code-servers, which delete the versions that
+            // no extensions.json lists: those the deferred tabs still run.
+            installed: async () => { if (before.length) held = obsolete.holdVersions(dir, before); },
+            // Going back reinstalls the version held, once the tabs that run it have stopped.
+            restoring: async () => {
+              await settle();
+              if (held.length) obsolete.releaseVersions(dir, held);
+              held = [];
+            },
+            probe: () => probeInstance(ids),
             commit: () => extensionImports.commit(target, records, previous),
           });
         } else {
@@ -314,6 +337,8 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
         refreshResolvedExtensions();
         return { status: 'done', detail: target === localTarget() ? '' : t('Linux imports apply when the matching WSL tabs next start.') };
       },
+      // Once the deferred tabs have restarted, or the batch went back to the versions they run.
+      release: () => { if (held.length) obsolete.releaseVersions(dir, held); },
     });
     // Done, failed, or cancelled: the snapshots replaced twice, or never committed, are not needed.
     pruneSnapshots();

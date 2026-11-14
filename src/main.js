@@ -89,6 +89,7 @@ const { createWebviewSites } = require('./tabs/webview-sites');
 const { StartupGate } = require('./tabs/startup-gate');
 const { createAppUpdates } = require('./code-server/app-updates');
 const { createOpenVsx } = require('./code-server/open-vsx');
+const { releaseVersions } = require('./code-server/obsolete');
 const { prepareCodeServer, wrapperProblem } = require('./code-server/startup-preparation');
 const { createUpdateProbe } = require('./code-server/update-probe');
 const { RepositoryService } = require('./repos/repository-service');
@@ -636,7 +637,7 @@ const {
     tab.view.webContents.loadURL(placeholderUrl(tab.name, t('Updating extensions')));
   },
   start: startServer, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe: probeInstance,
-  messageBox, changed: pushState, log: logUpdate, find: findUpdates,
+  messageBox, changed: pushState, log: logUpdate, find: findUpdates, conversations: (id) => sessions.conversations(id),
   // Chromium's network stack, so the system proxy settings apply to the downloads.
   openVsx: createOpenVsx({ fetch: (url, options) => net.fetch(url, options) }),
 });
@@ -644,6 +645,11 @@ const {
 // run that quit in the middle of an import. Only in the instance that holds the lock: another
 // one, started while the first stages an import, would delete what has no record yet.
 if (primaryInstance) pruneSnapshots();
+// Kept for the tabs an earlier run left on a replaced version (obsolete.js). None runs now.
+if (primaryInstance) {
+  try { releaseVersions(config.resolvedExtensionsDir); }
+  catch (error) { logUpdate(`could not let go of the replaced versions: ${error.message}`); }
+}
 
 // ---- Updates of Worktabs itself ------------------------------------------------------------
 

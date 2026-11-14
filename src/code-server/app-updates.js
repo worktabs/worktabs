@@ -4,7 +4,7 @@
 // tabs, and the hidden instance that tries new versions out (update-probe.js) are injected.
 const fs = require('fs');
 const path = require('path');
-const { t } = require('../i18n');
+const { t, listText } = require('../i18n');
 const { UpdateCoordinator } = require('./update-coordinator');
 const { applyGalleryUpdate } = require('./update-strategies');
 const { createExtensionManagement } = require('./extension-management');
@@ -31,10 +31,11 @@ function downloadProgress(version, report, now = Date.now) {
 // tab for the switch and shows that it is updating. `probe`: tries the new versions in a hidden
 // instance (update-probe.js). `find`: findUpdates (updates.js, which takes Electron's net).
 // `openVsx`: the Open VSX client that downloads releases as snapshots (open-vsx.js).
+// `conversations(tabId)`: the tab's conversation rows (ConversationStore.conversations).
 function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServers, extensionImports,
   pause, start, stopRisks, callHelper, helperExtensions, refreshResolvedExtensions, probe, messageBox,
   changed, log, find, openVsx = null, ensure = ensureCodeServer, removeOld = removeOldCodeServers,
-  localExtensions = installedExtensions, target = localTarget }) {
+  localExtensions = installedExtensions, target = localTarget, conversations = (_tabId) => [] }) {
   const coordinator = new UpdateCoordinator({
     tabs: () => tabs,
     changed,
@@ -42,6 +43,8 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     startingError: () => t('A tab started during the update check. Try applying again.'),
     waitDetail: (unobserved) => unobserved ? t('Close the tabs where Worktabs cannot see whether Codex is working.') : t('Wait for work to finish and save changes before applying updates.'),
     resumeDetail: () => t('Restarting the tabs…'),
+    restartDetail: (names) => t('Updated. These tabs restart once their work finishes: {tabs}', { tabs: listText(names) }),
+    settleDetail: (names) => t('Going back to the previous versions once these tabs finish: {tabs}', { tabs: listText(names) }),
     risks: updateRisks,
     pause,
     start,
@@ -185,8 +188,13 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
   }
 
   // Running Codex tabs whose turns cannot be observed still block the shared extension switch.
-  async function updateRisks() {
+  // `agent`: the switch changes only that agent's extensions. A running tab that is busy, but has
+  // no turn of that agent in progress, does not hold it up: it is `deferrable`, and goes on with
+  // the old versions until it is idle (#62). `busyTabs`: the tabs named in `busy`.
+  async function updateRisks({ agent = null } = {}) {
     const busy = [];
+    const busyTabs = [];
+    const deferrable = [];
     let unobserved = false;
     const codexInstalled = config.agents.includes('codex') || localExtensions(config.resolvedExtensionsDir).some((item) => item.id === 'openai.chatgpt');
     for (const tab of tabs.values()) {
@@ -196,10 +204,22 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
         ? ((await callHelper(tab.id, '/codex-active', {}, { result: true }))?.active ?? null)
         : false;
       const reason = idleWaitReason(tab, { risks, codexActive });
-      if (reason) busy.push(tab.name);
+      if (!reason) continue;
+      if (agent && reason === 'busy' && running && !agentTurn(tab, agent)) {
+        deferrable.push(tab);
+        continue;
+      }
+      busy.push(tab.name);
+      busyTabs.push(tab);
       if (reason === 'unobserved') unobserved = true;
     }
-    return { busy, unobserved };
+    return { busy, busyTabs, deferrable, unobserved };
+  }
+
+  // Whether a conversation of `agent` works or waits in the tab.
+  function agentTurn(tab, agent) {
+    return conversations(tab.id).some((conversation) => (conversation.agent || 'claude') === agent
+      && (conversation.state === 'working' || conversation.state === 'waiting'));
   }
 
   // Instances started from now on run this code-server ({ dir, version }).

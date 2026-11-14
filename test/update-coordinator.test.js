@@ -116,6 +116,80 @@ test('a failed resume still tries the other tabs and reports failure without hol
   assert.equal(coordinator.switchOwner, null);
 });
 
+// A batch of one agent's extensions with tab 'b' busy outside that agent: the risk reads answer
+// from `busy` (which tabs are still busy at each read), and the strategy records what it is given.
+function agentSetup(busy) {
+  const reads = [];
+  const context = setup({
+    restartDetail: (names) => `restart ${names.join(',')}`, settleDetail: (names) => `settle ${names.join(',')}`,
+    risks: async (scope) => {
+      reads.push(scope?.agent || 'all');
+      if (scope) return { busy: [], deferrable: [context.tabs.get('b')], unobserved: false };
+      const still = busy.shift() || [];
+      return { busy: still, busyTabs: still.map((id) => context.tabs.get(id)), unobserved: false };
+    },
+  });
+  context.tabs.set('b', { id: 'b', name: 'B', server: 'running' });
+  context.strategy.agent = 'codex';
+  context.strategy.release = () => context.events.push('release');
+  context.reads = reads;
+  context.details = [];
+  context.coordinator.deps.changed = () => context.details.push(context.coordinator.state.detail);
+  return context;
+}
+
+test('a batch of one agent\'s extensions leaves busy tabs of other work running, and restarts each once it is idle', async () => {
+  const { coordinator, strategy, execute, events, reads, details } = agentSetup([['b'], ['b'], []]);
+  strategy.apply = async (prepared, _report, { deferred }) => {
+    events.push(`apply ${prepared} beside ${deferred.map((tab) => tab.id).join(',')}`);
+    return { status: 'done', detail: '' };
+  };
+  assert.equal(await execute(), true);
+  assert.deepEqual(events, ['prepare', 'pause a', 'apply prepared beside b', 'start a', 'pause b', 'start b', 'release']);
+  assert.deepEqual(reads, ['codex', 'all', 'all', 'all']);
+  assert.ok(details.includes('restart B'));
+  assert.equal(coordinator.state.status, 'done');
+  assert.equal(coordinator.busy, false);
+  assert.equal(coordinator.deferred.size, 0);
+});
+
+test('a deferred tab that closes or stops is not restarted; one that fails to restart fails the update', async () => {
+  const closed = agentSetup([['b']]);
+  closed.deps.sleep = async () => { closed.tabs.delete('b'); };
+  assert.equal(await closed.execute(), true);
+  assert.deepEqual(closed.events, ['prepare', 'pause a', 'apply prepared', 'start a', 'release']);
+
+  const failing = agentSetup([[]]);
+  const start = failing.deps.start;
+  failing.deps.start = async (tab) => { if (tab.id === 'b') throw new Error('b did not start'); return start(tab); };
+  assert.equal(await failing.execute(), false);
+  assert.equal(failing.coordinator.state.status, 'failed');
+  assert.equal(failing.coordinator.state.detail, 'b did not start');
+  assert.ok(failing.events.includes('release'));
+});
+
+test('going back stops the deferred tabs once idle, and restarts them with the others rather than after', async () => {
+  const { coordinator, strategy, execute, events, details } = agentSetup([['b'], []]);
+  strategy.apply = async (_prepared, _report, { settle }) => {
+    events.push('probe failed');
+    await settle();
+    events.push('restore');
+    throw new Error('probe failed');
+  };
+  assert.equal(await execute(), false);
+  assert.deepEqual(events, ['prepare', 'pause a', 'probe failed', 'pause b', 'restore', 'probe failed', 'start a', 'start b', 'release']);
+  assert.ok(details.includes('settle B'));
+  assert.equal(coordinator.state.status, 'failed');
+});
+
+test('a batch that is not one agent\'s waits for every busy tab and defers none', async () => {
+  const scopes = [];
+  const { execute, strategy } = setup({ risks: async (scope) => { scopes.push(scope); return { busy: [], unobserved: false }; } });
+  strategy.apply = async (_prepared, _report, { deferred }) => ({ status: deferred.length ? 'failed' : 'done' });
+  assert.equal(await execute(), true);
+  assert.deepEqual(scopes, [undefined]);
+});
+
 function gallery(overrides = {}) {
   const events = [];
   const options = {
