@@ -485,6 +485,7 @@ Inside the app, WSL folders are kept as `\\wsl.localhost\<distro name>\...` path
 - The transcript and working folder in hooks arrive as Linux paths, so the app converts them to `\\wsl.localhost\...` before reading.
 - The Linux code-server has its terminal command only under the name `code-server`. As is, `code` would start the Windows VS Code found later in PATH, so the app creates a `code` symbolic link in the same folder.
 - The extensions installed are the same versions as in the Windows tabs. When no WSL tab is running and a version differs, the app reinstalls them (reinstalling removes the old version, so it waits while any tab is running).
+  - A distribution syncs its extensions one at a time (`syncExtensions` in `src/code-server/code-server-wsl.js`): for tabs that start together, and for an update. code-server installs an extension into a temporary folder and renames it into place, so two installs of the same extension at once fail (`ENOTEMPTY`). A sync that waited reads `extensions.json` again and skips what the one before installed. A failed sync does not stop the next one.
 
 ## Chat panel focus
 
