@@ -2,6 +2,18 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-11-14
+
+### Features
+- group the open and other repositories in the sidebar under their owners ([#72](https://github.com/worktabs/worktabs/pull/72))
+- update Codex without waiting for tabs where no Codex turn is in progress ([#71](https://github.com/worktabs/worktabs/pull/71))
+- bring back each tab's Claude conversation rows after a restart, as idle rows ([#67](https://github.com/worktabs/worktabs/pull/67))
+
+### Bug fixes
+- start every WSL tab opened at once in a new distribution, installing each extension once ([#70](https://github.com/worktabs/worktabs/pull/70))
+- offer no update for an agent's extensions while agents leaves the agent out ([#66](https://github.com/worktabs/worktabs/pull/66))
+- draw the terminal's text at its font size again, with Electron 45.3.2 ([#65](https://github.com/worktabs/worktabs/pull/65))
+
 ## [0.10.0] - 2026-11-11
 
 ### Features
