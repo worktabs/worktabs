@@ -54,6 +54,8 @@ Copying is not permission to use an extension in another application. The [VS Co
 
 Checking for updates asks Open VSX about the snapshots taken from there, for this computer and for the Linux targets that have them, and offers newer releases. Those for this computer are installed and tried like an import (see below), so a version that does not start goes back to the previous snapshot without a download. Those for WSL are prepared like a Linux import, without waiting for the tabs on Windows, and install when a tab of the distribution next starts. **Use Open VSX** on a Linux target also takes its newest release at once.
 
+Update checks offer neither the extension of an agent that `agents` leaves out nor the rest of its extension pack (Codex Audio comes with Codex, also when it was imported from VS Code as an extension of its own). The tabs do not install them then, and applying such an update would still restart every tab. An update offered before the agent was left out goes at the next check (every minute while `updateCheck` is on).
+
 ## Applying and restoring
 
 Local imports are immutable cached snapshots with SHA-256 hashes. Updates wait for Claude and Codex turns to finish and edits to be saved, then restart idle tabs. An extension update may bypass the Codex proxy, so a tab where Codex has started but its proxy has not reported in must be closed first; the sidebar names it. The proxy is set up wherever the Codex extension is installed, also when `agents` leaves Codex out, so such a tab is rare. A Codex status that Worktabs does not know counts as working. The sidebar can cancel a waiting update. Before changing shared extensions, Worktabs stops idle instances and blocks new starts.

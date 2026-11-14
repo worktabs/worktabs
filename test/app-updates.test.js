@@ -4,10 +4,10 @@ const { createAppUpdates, downloadProgress } = require('../src/code-server/app-u
 
 const update = { kind: 'extension', id: 'a.b', from: '1.0.0', to: '1.1.0' };
 
-function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local' } = {}) {
+function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local', agents = ['claude', 'codex'] } = {}) {
   const calls = [];
   const logged = [];
-  const config = { agents: ['claude', 'codex'], codeServerVersion: '4.0.0', resolvedExtensions: [], resolvedExtensionsDir: '/ext' };
+  const config = { agents, codeServerVersion: '4.0.0', resolvedExtensions: [], resolvedExtensionsDir: '/ext' };
   const updates = createAppUpdates({
     config, saveConfig: () => {}, dataDir: '/data', tabs: new Map(tabs.map((tab) => [tab.id, tab])),
     servers: () => ({ codeServerDir }), wslServers: new Map(), openVsx,
@@ -24,7 +24,7 @@ function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], cod
     },
     localExtensions: () => [], target: () => target,
   });
-  return { updates, calls, logged };
+  return { updates, calls, logged, config };
 }
 
 test('newer Open VSX releases of snapshots join the gallery updates, and are applied through the snapshot batch first', async (t) => {
@@ -88,6 +88,27 @@ test('newer imports join the gallery updates already offered, and dismissing cle
   assert.deepEqual(updates.coordinator.state.items, [imported, update]);
   updates.dismissUpdate();
   assert.deepEqual(updates.coordinator.state, { status: 'none' });
+});
+
+test('newer imports of Codex and Codex Audio are not offered while agents leaves Codex out', async () => {
+  const codex = { kind: 'import', id: 'openai.chatgpt', from: '26.1106.51428', to: '26.1111.21308', target: 'local' };
+  const audio = { kind: 'import', id: 'openai.codex-audio', from: '26.1106.51428', to: '26.1111.21308', target: 'local' };
+  const tool = { kind: 'import', id: 'acme.tool', from: '1.0.0', to: '1.1.0', target: 'local' };
+  const left = setup({ agents: ['claude'], local: [codex, audio, tool] });
+  await left.updates.checkForUpdates();
+  assert.deepEqual(left.updates.coordinator.state, { status: 'available', items: [tool] });
+  assert.deepEqual(left.logged, ['check: acme.tool 1.0.0 -> 1.1.0']);
+  const quiet = setup({ agents: ['claude'], local: [codex, audio] });
+  quiet.updates.checkLocalExtensionUpdates();
+  assert.deepEqual(quiet.updates.coordinator.state, { status: 'none' });
+
+  // Offered while Codex was enabled, and gone at the next local check once it is left out.
+  const used = setup({ found: { updates: [update], errors: [] }, local: [codex, audio] });
+  await used.updates.checkForUpdates();
+  assert.deepEqual(used.updates.coordinator.state.items, [codex, audio, update]);
+  used.config.agents = ['claude'];
+  used.updates.checkLocalExtensionUpdates();
+  assert.deepEqual(used.updates.coordinator.state.items, [update]);
 });
 
 test('busy tabs, and Codex tabs that cannot be observed, hold up the switch', async () => {

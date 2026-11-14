@@ -106,6 +106,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
       checkError = t('Could not check app-managed updates: {error}', { error: errors.join('\n') });
     }
     if (coordinator.state !== stateBefore) return;
+    items = items.filter(management.offered);
     log(`check: ${items.map((i) => `${i.id} ${i.from} -> ${i.to}`).join(', ') || 'up to date'}`);
     if (items.length) setUpdate({ status: 'available', items });
     else {
@@ -114,13 +115,15 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
     }
   }
 
-  // Newer versions of the extensions imported by hand, found without asking any gallery.
+  // Newer versions of the extensions imported by hand, found without asking any gallery. It also
+  // drops what was offered for an agent that `agents` has left out since.
   function checkLocalExtensionUpdates() {
     if (UPDATE_BUSY.includes(coordinator.state.status)) return;
     try {
       const local = extensionImports.localUpdates(target());
       const remote = coordinator.state.status === 'available' ? coordinator.state.items.filter((item) => item.kind !== 'import') : [];
-      if (local.length || remote.length) setUpdate({ status: 'available', items: [...local, ...remote] });
+      const items = [...local, ...remote].filter(management.offered);
+      if (items.length) setUpdate({ status: 'available', items });
       else if (coordinator.state.status === 'available') setUpdate({ status: 'none' });
     } catch (error) { log(`local check failed: ${error.message}`); }
   }
