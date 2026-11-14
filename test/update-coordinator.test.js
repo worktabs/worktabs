@@ -168,6 +168,43 @@ test('a deferred tab that closes or stops is not restarted; one that fails to re
   assert.ok(failing.events.includes('release'));
 });
 
+test('deferred tabs restart one per read of the risks, so one busy again by then waits', async () => {
+  // b and c are idle at the first read; c starts a turn while b restarts, and finishes later.
+  const { tabs, deps, execute, events } = agentSetup([]);
+  tabs.set('c', { id: 'c', name: 'C', server: 'running' });
+  const reads = [[], ['c'], []];
+  deps.risks = async (scope) => {
+    if (scope) return { busy: [], deferrable: [tabs.get('b'), tabs.get('c')], unobserved: false };
+    const still = reads.shift() || [];
+    return { busy: still, busyTabs: still.map((id) => tabs.get(id)), unobserved: false };
+  };
+  deps.sleep = async () => { events.push('wait'); };
+  assert.equal(await execute(), true);
+  assert.deepEqual(events, ['prepare', 'pause a', 'apply prepared', 'start a', 'pause b', 'start b', 'wait', 'pause c', 'start c', 'release']);
+});
+
+test('a tab that the lifecycle could not start fails the update, though its start did not reject', async () => {
+  const deferredTab = agentSetup([[]]);
+  const start = deferredTab.deps.start;
+  deferredTab.deps.start = async (tab) => {
+    if (tab.id !== 'b') return start(tab);
+    tab.server = 'error';
+    tab.error = 'code-server ended (code 1)';
+  };
+  assert.equal(await deferredTab.execute(), false);
+  assert.equal(deferredTab.coordinator.state.detail, 'code-server ended (code 1)');
+
+  // The same for a tab stopped for the switch; one closed meanwhile has not failed.
+  const paused = setup();
+  paused.tabs.set('b', { id: 'b', server: 'running' });
+  paused.deps.start = async (tab) => {
+    if (tab.id === 'a') { tab.server = 'stopped'; tab.error = 'Codex could not be installed.'; }
+    else paused.tabs.delete('b');
+  };
+  assert.equal(await paused.execute(), false);
+  assert.equal(paused.coordinator.state.detail, 'Codex could not be installed.');
+});
+
 test('going back stops the deferred tabs once idle, and restarts them with the others rather than after', async () => {
   const { coordinator, strategy, execute, events, details } = agentSetup([['b'], []]);
   strategy.apply = async (_prepared, _report, { settle }) => {

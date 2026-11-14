@@ -85,10 +85,17 @@ class UpdateCoordinator {
     const failures = [];
     for (const tab of restart) {
       if (this.deps.tabs().get(tab.id) !== tab || tab.server === 'running') continue;
-      try { await this.deps.start(tab); }
+      try { await this.startTab(tab); }
       catch (error) { failures.push(error.message); }
     }
     if (failures.length) throw new Error(failures.join('\n'));
+  }
+
+  // Starts a tab, and rejects when it did not come up. The lifecycle's start settles either way,
+  // and leaves why on the tab. One closed or suspended meanwhile has not failed.
+  async startTab(tab) {
+    await this.deps.start(tab);
+    if (this.deps.tabs().get(tab.id) === tab && tab.server !== 'running' && tab.error) throw new Error(tab.error);
   }
 
   // The deferred tabs still open and running. One closed, suspended, or stopped no longer runs
@@ -101,20 +108,20 @@ class UpdateCoordinator {
   }
 
   // Hands each deferred tab to `act` once it is idle, reporting `detail(names)` of those still
-  // busy. Resolves the error messages of `act`.
+  // busy. Resolves the error messages of `act`. One tab per read of the risks: acting on one can
+  // take a while (a restart waits for its server), and another may be busy again by then.
   async whenDeferredIdle(run, detail, act) {
     const failures = [];
     while (this.run === run && this.liveDeferred().length) {
       const { busyTabs = [] } = await this.deps.risks();
-      for (const tab of this.liveDeferred()) {
-        if (busyTabs.includes(tab)) continue;
-        this.deferred.delete(tab);
-        try { await act(tab); }
+      const idle = this.liveDeferred().find((tab) => !busyTabs.includes(tab));
+      if (idle) {
+        this.deferred.delete(idle);
+        try { await act(idle); }
         catch (error) { failures.push(error.message); }
+        continue;
       }
-      const waiting = this.liveDeferred();
-      if (!waiting.length) break;
-      run.report({ status: 'applying', detail: detail(waiting.map((tab) => tab.name)) });
+      run.report({ status: 'applying', detail: detail(this.liveDeferred().map((tab) => tab.name)) });
       await this.deps.sleep(3000);
     }
     return failures;
@@ -167,7 +174,7 @@ class UpdateCoordinator {
       if (result?.status === 'done' && this.deferred.size) {
         const failures = await this.whenDeferredIdle(run, this.deps.restartDetail, async (tab) => {
           this.deps.pause(tab);
-          await this.deps.start(tab);
+          await this.startTab(tab);
         });
         if (failures.length) {
           for (const failure of failures) this.deps.log(failure);
