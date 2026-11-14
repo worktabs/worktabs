@@ -129,6 +129,8 @@ class UpdateCoordinator {
 
   async execute(run, strategy) {
     let result;
+    // Whether the new versions are in place, whatever the restarts after it give.
+    let applied = false;
     let phase = 'prepare';
     try {
       const prepared = strategy.prepare ? await strategy.prepare(run.report) : undefined;
@@ -157,6 +159,7 @@ class UpdateCoordinator {
           });
         },
       });
+      applied = result?.status === 'done';
     } catch (error) {
       this.deps.log(error.message);
       result = { status: 'failed', detail: strategy.failure(error, phase) };
@@ -169,9 +172,10 @@ class UpdateCoordinator {
           result = { status: 'failed', detail: [result?.detail, error.message].filter(Boolean).join('\n') };
         }
       }
-      // Once applied, each deferred tab restarts on the new versions when it is idle. A batch that
-      // failed went back to the versions they run.
-      if (result?.status === 'done' && this.deferred.size) {
+      // Once applied, each deferred tab restarts on the new versions when it is idle, also when
+      // another tab failed to resume: the held versions are let go only after. A batch that failed
+      // went back to the versions they run.
+      if (applied && this.deferred.size) {
         const failures = await this.whenDeferredIdle(run, this.deps.restartDetail, async (tab) => {
           this.deps.pause(tab);
           await this.startTab(tab);

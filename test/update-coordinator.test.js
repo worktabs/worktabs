@@ -205,6 +205,18 @@ test('a tab that the lifecycle could not start fails the update, though its star
   assert.equal(paused.coordinator.state.detail, 'Codex could not be installed.');
 });
 
+test('a paused tab that fails to resume does not stop the deferred tabs restarting before the old versions go', async () => {
+  const { coordinator, deps, execute, events } = agentSetup([['b'], []]);
+  const start = deps.start;
+  deps.start = async (tab) => {
+    if (tab.id === 'a') { events.push('start a'); throw new Error('a did not start'); }
+    return start(tab);
+  };
+  assert.equal(await execute(), false);
+  assert.deepEqual(events, ['prepare', 'pause a', 'apply prepared', 'start a', 'a did not start', 'pause b', 'start b', 'release']);
+  assert.equal(coordinator.state.detail, 'a did not start');
+});
+
 test('going back stops the deferred tabs once idle, and restarts them with the others rather than after', async () => {
   const { coordinator, strategy, execute, events, details } = agentSetup([['b'], []]);
   strategy.apply = async (_prepared, _report, { settle }) => {
