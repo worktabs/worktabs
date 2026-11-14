@@ -150,7 +150,6 @@ test('a batch of one agent\'s extensions leaves busy tabs of other work running,
   assert.ok(details.includes('restart B'));
   assert.equal(coordinator.state.status, 'done');
   assert.equal(coordinator.busy, false);
-  assert.equal(coordinator.deferred.size, 0);
 });
 
 test('a deferred tab that closes or stops is not restarted; one that fails to restart fails the update', async () => {
@@ -215,6 +214,33 @@ test('a paused tab that fails to resume does not stop the deferred tabs restarti
   assert.equal(await execute(), false);
   assert.deepEqual(events, ['prepare', 'pause a', 'apply prepared', 'start a', 'a did not start', 'pause b', 'start b', 'release']);
   assert.equal(coordinator.state.detail, 'a did not start');
+});
+
+test('a cancelled run that ends late leaves the deferred tabs of the run after it alone', async () => {
+  const waits = [deferred(), deferred()];
+  const pending = [...waits];
+  let busy = true;
+  const { coordinator, strategy, deps, tabs, events } = setup({
+    restartDetail: () => 'restart', settleDetail: () => 'settle', sleep: () => waits.shift().promise,
+  });
+  tabs.set('b', { id: 'b', name: 'B', server: 'running' });
+  // The first run waits for b, and is cancelled while it sleeps.
+  deps.risks = async () => ({ busy: ['B'], busyTabs: [tabs.get('b')], unobserved: false });
+  const old = coordinator.execute(coordinator.begin([{ kind: 'extension' }], 'old'), strategy);
+  await flush();
+  coordinator.cancel();
+  // The next is one agent's: it leaves b running, and waits for it to be idle to restart it.
+  deps.risks = async (scope) => (scope ? { busy: [], deferrable: [tabs.get('b')], unobserved: false }
+    : { busy: busy ? ['B'] : [], busyTabs: busy ? [tabs.get('b')] : [], unobserved: false });
+  const next = coordinator.execute(coordinator.begin([{ kind: 'import' }], 'next'),
+    { ...strategy, agent: 'codex', release: () => events.push('release') });
+  await flush();
+  pending[0].resolve();
+  assert.equal(await old, false);
+  busy = false;
+  pending[1].resolve();
+  assert.equal(await next, true);
+  assert.deepEqual(events.slice(-3), ['pause b', 'start b', 'release']);
 });
 
 test('going back stops the deferred tabs once idle, and restarts them with the others rather than after', async () => {

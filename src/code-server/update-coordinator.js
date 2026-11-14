@@ -8,8 +8,6 @@ class UpdateCoordinator {
     this.switchOwner = null;
     this.paused = new Set();
     this.blocked = new Set();
-    // Busy tabs left running on the versions a batch of one agent's extensions replaces (#62).
-    this.deferred = new Set();
   }
 
   get busy() {
@@ -23,7 +21,9 @@ class UpdateCoordinator {
 
   begin(items, detail) {
     if (this.busy) throw new Error(this.deps.busyError());
-    const run = { items };
+    // `deferred`: busy tabs left running on the versions a batch of one agent's extensions
+    // replaces (#62). The run's own, so that a cancelled run that ends late leaves the next alone.
+    const run = { items, deferred: new Set() };
     run.report = (state) => { if (this.run === run) this.report({ items, ...state }); };
     this.run = run;
     run.report({ status: 'preparing', detail });
@@ -68,7 +68,7 @@ class UpdateCoordinator {
     for (const tab of tabs) {
       if (tab.server !== 'running') continue;
       if (deferrable.includes(tab)) {
-        this.deferred.add(tab);
+        run.deferred.add(tab);
         continue;
       }
       this.paused.add(tab);
@@ -100,11 +100,11 @@ class UpdateCoordinator {
 
   // The deferred tabs still open and running. One closed, suspended, or stopped no longer runs
   // the old versions, and starts on the new ones.
-  liveDeferred() {
-    for (const tab of this.deferred) {
-      if (this.deps.tabs().get(tab.id) !== tab || tab.server !== 'running') this.deferred.delete(tab);
+  liveDeferred(run) {
+    for (const tab of run.deferred) {
+      if (this.deps.tabs().get(tab.id) !== tab || tab.server !== 'running') run.deferred.delete(tab);
     }
-    return [...this.deferred];
+    return [...run.deferred];
   }
 
   // Hands each deferred tab to `act` once it is idle, reporting `detail(names)` of those still
@@ -112,16 +112,16 @@ class UpdateCoordinator {
   // take a while (a restart waits for its server), and another may be busy again by then.
   async whenDeferredIdle(run, detail, act) {
     const failures = [];
-    while (this.run === run && this.liveDeferred().length) {
+    while (this.run === run && this.liveDeferred(run).length) {
       const { busyTabs = [] } = await this.deps.risks();
-      const idle = this.liveDeferred().find((tab) => !busyTabs.includes(tab));
+      const idle = this.liveDeferred(run).find((tab) => !busyTabs.includes(tab));
       if (idle) {
-        this.deferred.delete(idle);
+        run.deferred.delete(idle);
         try { await act(idle); }
         catch (error) { failures.push(error.message); }
         continue;
       }
-      run.report({ status: 'applying', detail: detail(this.liveDeferred().map((tab) => tab.name)) });
+      run.report({ status: 'applying', detail: detail(this.liveDeferred(run).map((tab) => tab.name)) });
       await this.deps.sleep(3000);
     }
     return failures;
@@ -149,7 +149,7 @@ class UpdateCoordinator {
       if (shared) this.pause(run, deferrable);
       phase = 'apply';
       result = await strategy.apply(prepared, run.report, {
-        deferred: [...this.deferred],
+        deferred: [...run.deferred],
         // Going back to the previous versions replaces the folders the deferred tabs run, so they
         // stop first, once idle, and restart with the others.
         settle: async () => {
@@ -175,7 +175,7 @@ class UpdateCoordinator {
       // Once applied, each deferred tab restarts on the new versions when it is idle, also when
       // another tab failed to resume: the held versions are let go only after. A batch that failed
       // went back to the versions they run.
-      if (applied && this.deferred.size) {
+      if (applied && run.deferred.size) {
         const failures = await this.whenDeferredIdle(run, this.deps.restartDetail, async (tab) => {
           this.deps.pause(tab);
           await this.startTab(tab);
@@ -185,7 +185,7 @@ class UpdateCoordinator {
           result = { status: 'failed', detail: [result.detail, ...failures].filter(Boolean).join('\n') };
         }
       }
-      this.deferred.clear();
+      run.deferred.clear();
       try { strategy.release?.(); }
       catch (error) { this.deps.log(error.message); }
       if (this.run === run) {
