@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 const semver = require('semver');
 const { t } = require('../i18n');
-const { agentExtensions, isAgentExtension } = require('../agents/agents');
+const { leftOutExtensions } = require('../agents/agents');
 const imports = require('./extension-imports');
 
 const PROTECTED_IDS = ['worktabs.worktabs-helper'];
@@ -57,12 +57,34 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     return previous;
   }
 
+  // The IDs of the records that the tabs of `target` leave out: those of an agent that `agents`
+  // leaves out, with the rest of its extension pack (Codex Audio comes with Codex, from VS Code
+  // as a record of its own).
+  function leftOutIds(target) {
+    const left = new Set(leftOutExtensions(config.agents));
+    for (const record of extensionImports.records(target)) {
+      if (left.has(record.id)) for (const member of record.bundled || []) left.add(member);
+    }
+    return left;
+  }
+
   function extensionSpecs(target = localTarget()) {
     const records = extensionImports.records(target);
     const locked = new Set(records.map((record) => record.id));
+    const left = leftOutIds(target);
     // Codex never comes from the gallery: ensureCodex takes it from Open VSX as a snapshot.
     const configured = config.resolvedExtensions.filter((id) => !locked.has(id.toLowerCase()) && id.toLowerCase() !== CODEX);
-    return [...configured, ...records.filter((record) => !isAgentExtension(record.id) || agentExtensions(config.agents).some((id) => id.toLowerCase() === record.id)).map((record) => extensionImports.package(record)), ...helperExtensions()];
+    return [...configured, ...records.filter((record) => !left.has(record.id)).map((record) => extensionImports.package(record)), ...helperExtensions()];
+  }
+
+  // Whether an update item is for something the tabs run. One the tabs leave out is not offered:
+  // applying it would still stop every tab, for a version no tab starts (#61). An item offered
+  // before `agents` changed goes at the next check.
+  function offered(item) {
+    const id = String(item.id || '').toLowerCase();
+    if (item.kind === 'import' || item.kind === 'openvsx') return !leftOutIds(item.target || localTarget()).has(id);
+    if (item.kind === 'extension') return !leftOutExtensions(config.agents).includes(id);
+    return true;
   }
 
   function rememberCandidate(item) {
@@ -303,9 +325,11 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   }
 
   // Newer Open VSX releases of the extensions taken from there, as update items. The members of an
-  // extension pack come with the pack, so they are not asked about on their own.
+  // extension pack come with the pack, so they are not asked about on their own. Nor are those the
+  // tabs leave out.
   async function openVsxUpdates(target = localTarget()) {
-    const records = extensionImports.records(target).filter((record) => record.source?.kind === 'openvsx');
+    const left = leftOutIds(target);
+    const records = extensionImports.records(target).filter((record) => record.source?.kind === 'openvsx' && !left.has(record.id));
     if (!openVsx || !records.length) return { updates: [], errors: [] };
     const members = new Set(records.flatMap((record) => record.bundled || []));
     const vscode = vscodeVersion();
@@ -343,7 +367,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
     return queueExtensionImports(keys, target);
   }
 
-  return { extensionSpecs, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, openVsxUpdates, rollbackExtension, pruneSnapshots, ensureCodex, hasCodex };
+  return { extensionSpecs, offered, rememberCandidate, extensionState, queueExtensionImports, useOpenVsx, openVsxUpdates, rollbackExtension, pruneSnapshots, ensureCodex, hasCodex };
 }
 
 module.exports = { createExtensionManagement };

@@ -5,12 +5,16 @@ const AGENTS = {
     label: 'Claude Code',
     short: 'Claude',
     extension: 'Anthropic.claude-code',
+    pack: [],
   },
   codex: {
     id: 'codex',
     label: 'Codex',
     short: 'Codex',
     extension: 'OpenAI.chatgpt',
+    // The rest of its extension pack (its manifest's extensionPack, and Open VSX's bundled
+    // extensions), which is of no use without it.
+    pack: ['openai.codex-audio'],
   },
 };
 
@@ -54,6 +58,14 @@ function agentExtensions(agents) {
 function isAgentExtension(id) {
   const value = String(id || '').toLowerCase();
   return Object.values(AGENTS).some((agent) => agent.extension.toLowerCase() === value);
+}
+
+// The extensions (lowercase IDs) of the agents that `agents` leaves out, with the rest of their
+// extension packs.
+function leftOutExtensions(agents) {
+  const enabled = normalizeAgents(agents);
+  return Object.values(AGENTS).filter((agent) => !enabled.includes(agent.id))
+    .flatMap((agent) => [agent.extension, ...agent.pack].map((id) => id.toLowerCase()));
 }
 
 function extensionAgents(ids) {
@@ -111,6 +123,7 @@ module.exports = {
   effectiveBranchAgent,
   extensionAgents,
   isAgentExtension,
+  leftOutExtensions,
   managedAgentSettings,
   normalizeAgent,
   normalizeAgents,

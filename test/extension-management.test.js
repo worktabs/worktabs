@@ -190,6 +190,38 @@ test('extension specs retain imported sources, enabled agents, and the helper wi
   assert.deepEqual(service.extensionSpecs(), ['Anthropic.claude-code', 'helper.vsix']);
 });
 
+test('the rest of an agent extension pack is left out with it, whether imported on its own or bundled from Open VSX', () => {
+  const { service, records, config } = setup();
+  records.push(
+    { ...candidate(), file: 'snapshot/codex.vsix', source: { kind: 'vscode' } },
+    { id: 'openai.codex-audio', name: 'Codex Audio', version: '2.0.0', file: 'snapshot/audio.vsix', source: { kind: 'vscode' } },
+    { id: 'acme.member', name: 'Member', version: '1.0.0', file: 'snapshot/member.vsix', source: { kind: 'openvsx' } },
+    { id: 'acme.tool', name: 'Tool', version: '1.0.0', file: 'snapshot/tool.vsix', source: { kind: 'vscode' } },
+  );
+  records[0].bundled = ['acme.member'];
+  assert.deepEqual(service.extensionSpecs(), ['Anthropic.claude-code', 'snapshot/codex.vsix', 'snapshot/audio.vsix', 'snapshot/member.vsix', 'snapshot/tool.vsix', 'helper.vsix']);
+  config.agents = ['claude'];
+  assert.deepEqual(service.extensionSpecs(), ['Anthropic.claude-code', 'snapshot/tool.vsix', 'helper.vsix']);
+});
+
+test('updates are offered only for what the tabs install', () => {
+  const { service, records, config } = setup();
+  records.push({ ...candidate(), file: 'snapshot/codex.vsix', source: { kind: 'vscode' } });
+  const items = [
+    { kind: 'import', id: 'openai.chatgpt', target: 'win32-x64' },
+    { kind: 'import', id: 'openai.codex-audio', target: 'win32-x64' },
+    { kind: 'openvsx', id: 'openai.chatgpt', target: 'linux-x64' },
+    { kind: 'import', id: 'acme.tool', target: 'win32-x64' },
+    { kind: 'extension', id: 'anthropic.claude-code' },
+    { kind: 'code-server', id: 'code-server' },
+  ];
+  assert.deepEqual(items.filter(service.offered), items);
+  config.agents = ['claude'];
+  assert.deepEqual(items.filter(service.offered).map((item) => item.id), ['acme.tool', 'anthropic.claude-code', 'code-server']);
+  config.agents = ['codex'];
+  assert.deepEqual(items.filter(service.offered).map((item) => item.id), ['openai.chatgpt', 'openai.codex-audio', 'openai.chatgpt', 'acme.tool', 'code-server']);
+});
+
 test('extension state distinguishes active local installs, prepared snapshots, and source read errors', () => {
   const { service, records } = setup({
     localExtensions: () => [candidate('1.0.0')],
@@ -314,6 +346,20 @@ test('updates are looked up on Open VSX for the records taken from there, withou
   assert.deepEqual(errors, ['acme.down: HTTP 503']);
   assert.deepEqual(openVsx.asked.map(([, id]) => id), ['openai.chatgpt', 'acme.same', 'acme.down']);
   assert.deepEqual(await setup().service.openVsxUpdates(), { updates: [], errors: [] });
+});
+
+test('Open VSX is not asked about the snapshots of an agent that agents leaves out', async () => {
+  const openVsx = fakeOpenVsx({ latest: { 'openai.chatgpt': release('openai.chatgpt', '26.1106.51428'), 'acme.same': release('acme.same', '1.1.0') } });
+  const { service, records, config } = openVsxSetup({ openVsx });
+  config.agents = ['claude'];
+  records.push(
+    { id: 'openai.chatgpt', name: 'Codex', version: '26.1021.22027', source: { kind: 'openvsx' }, bundled: ['openai.codex-audio'] },
+    { id: 'openai.codex-audio', name: 'Codex Audio', version: '26.1021.22027', source: { kind: 'openvsx' } },
+    { id: 'acme.same', name: 'Same', version: '1.0.0', source: { kind: 'openvsx' } },
+  );
+  const { updates } = await service.openVsxUpdates();
+  assert.deepEqual(updates.map((item) => `${item.id} ${item.to}`), ['acme.same 1.1.0']);
+  assert.deepEqual(openVsx.asked.map(([, id]) => id), ['acme.same']);
 });
 
 test('restoring the previous version brings back the pack members too, with their recorded sources', async () => {
