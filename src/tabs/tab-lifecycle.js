@@ -184,14 +184,14 @@ class TabLifecycle {
     this.notify();
   }
 
-  stopRuntime(tab, keepCodex) {
+  stopRuntime(tab, keepRows) {
     const run = this.runs.get(tab.id);
     if (run?.tab === tab) {
       this.runs.delete(tab.id);
       run.cancel();
       if (run.launched) run.manager.stop(tab.id);
     }
-    this.cleanup(tab, keepCodex);
+    this.cleanup(tab, keepRows);
   }
 
   cancelReveal(tab) {
@@ -200,9 +200,9 @@ class TabLifecycle {
     tab.pendingReveal = null;
   }
 
-  cleanup(tab, keepCodex) {
+  cleanup(tab, keepRows) {
     this.cancelReveal(tab);
-    this.deps.cleanup(tab, { keepCodex });
+    this.deps.cleanup(tab, { keepRows });
   }
 
   // Updates use the same stop and cleanup as a restart, without asking a second time.

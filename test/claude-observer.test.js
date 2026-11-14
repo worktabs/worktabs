@@ -56,7 +56,7 @@ test('the first bounded tail skips a cut line and treats old interruptions only 
   assert.equal(f.store.tabState('tab'), 'working'); f.observer.stop();
 });
 
-test('local exit observation preserves Codex history and leaves WSL exits to their agent', async () => {
+test('local exit observation rests the rows of ended processes and leaves WSL exits to their agent', async () => {
   const f = fixture(); f.observer.start();
   f.store.handle('live', hook('UserPromptSubmit', { session_id: 'live' }), '100');
   f.store.handle('dead', hook('UserPromptSubmit', { session_id: 'dead' }), '101');
@@ -64,9 +64,9 @@ test('local exit observation preserves Codex history and leaves WSL exits to the
   f.store.handleCodex('codex', { threadId: 'one', state: 'working' }, '103');
   f.store.handleCodex('codex', { threadId: 'two', state: 'waiting' }, '103');
   await f.observer.poll(); assert.deepEqual(f.probes, [100, 101, 103]);
-  assert.equal(f.store.conversations('dead').length, 0); assert.equal(f.store.conversations('wsl').length, 1);
+  assert.deepEqual(f.store.conversations('dead').map((c) => c.state), ['idle']); assert.deepEqual(f.store.conversations('wsl').map((c) => c.state), ['working']);
   assert.deepEqual(f.store.conversations('codex').map((c) => c.state), ['idle', 'idle']);
-  f.store.endProc('wsl:Ubuntu:102'); assert.equal(f.store.conversations('wsl').length, 0); f.observer.stop();
+  f.store.endProc('wsl:Ubuntu:102'); assert.deepEqual(f.store.conversations('wsl').map((c) => c.state), ['idle']); f.observer.stop();
 });
 
 test('attachment and disposal are idempotent and a stopped timer or hook cannot read files', async () => {

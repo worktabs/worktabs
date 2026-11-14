@@ -441,7 +441,7 @@ test('GitHub reads and pending CI preserve live badges and archive clicks', asyn
   assert.deepEqual(archived, [[id, `codex:${id}:one`]]);
   assert.equal(rows().length, 1);
   assert.equal(rows()[0].querySelector('.name').textContent, 'two');
-  assert.equal(store.codexHistory(id).find((entry) => entry.threadId === 'one').archived, true);
+  assert.equal(store.history(id).find((entry) => entry.threadId === 'one').archived, true);
   event('one', 'idle');
   assert.equal(rows().length, 1, 'idle events do not restore an archived row');
   event('one', 'working');

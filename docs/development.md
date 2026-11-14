@@ -106,6 +106,7 @@ Automated tests cover the protocol adapter, concurrent approval requests, interr
 - Attempt close, suspend, and restart while a conversation works or waits. Each must warn, including when another conversation in the tab has an error. Automatic suspension must leave busy tabs running.
 - Keep two Codex threads in one tab. Click each row and check that the chat sidebar shows that exact thread, without creating editor tabs.
 - Suspend or stop the tab and check that wrapper processes disappear but used Codex threads remain as idle history rows. Restart Worktabs and click a saved row before the helper registers; it must open that thread after startup.
+- Send a prompt in two Claude conversations of one tab, archive one, and quit. Start Worktabs again: the other comes back idle with its title, and no claude runs until it is clicked. Clicking it opens that conversation in the chat panel. Suspend the tab and apply an update: the row stays. Close a conversation's editor tab: its row stays, idle.
 - Hide an idle Codex row with Worktabs's archive button and restart; it must stay hidden. Send a new prompt from Codex history to bring it back. Archive or delete a thread from the running Codex extension and check that its saved row disappears.
 - Try a missing thread and a tab without the Codex extension. Check that a warning and sidebar fallback replace silent failure.
 
