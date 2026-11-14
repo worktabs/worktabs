@@ -122,6 +122,8 @@
   "{error}. Could not go back to the previous versions either: {revertError}": "{error}。元の版にも戻せませんでした: {revertError}",
   "Could not update WSL {distro}: {error}": "WSL の {distro} は更新できませんでした: {error}",
   "Restarting the tabs…": "タブを再起動しています…",
+  "Updated. These tabs restart once their work finishes: {tabs}": "更新しました。次のタブは作業が終わると再起動します: {tabs}",
+  "Going back to the previous versions once these tabs finish: {tabs}": "次のタブの作業が終わったら元の版に戻します: {tabs}",
   "{error}. The previous versions stay.": "{error}。元の版のままです。",
   "The login page appeared (code-server may have changed how it authenticates)": "ログイン画面が表示されました（code-server の認証の仕組みが変わった可能性があります）",
   "The display language did not become {locale} (the way language packs load may have changed)": "表示言語が {locale} になりませんでした（言語パックの読み込み方が変わった可能性があります）",

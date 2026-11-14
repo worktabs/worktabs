@@ -4,7 +4,7 @@ const { createAppUpdates, downloadProgress } = require('../src/code-server/app-u
 
 const update = { kind: 'extension', id: 'a.b', from: '1.0.0', to: '1.1.0' };
 
-function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local', agents = ['claude', 'codex'] } = {}) {
+function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local', agents = ['claude', 'codex'], conversations = {} } = {}) {
   const calls = [];
   const logged = [];
   const config = { agents, codeServerVersion: '4.0.0', resolvedExtensions: [], resolvedExtensionsDir: '/ext' };
@@ -22,7 +22,7 @@ function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], cod
       if (found instanceof Error) throw found;
       return found;
     },
-    localExtensions: () => [], target: () => target,
+    localExtensions: () => [], target: () => target, conversations: (id) => conversations[id] || [],
   });
   return { updates, calls, logged, config };
 }
@@ -119,9 +119,32 @@ test('busy tabs, and Codex tabs that cannot be observed, hold up the switch', as
     { id: 'd', name: 'stopped', server: 'suspended' },
   ];
   const { updates } = setup({ tabs });
-  assert.deepEqual(await updates.coordinator.deps.risks(), { busy: ['busy', 'unseen'], unobserved: true });
+  assert.deepEqual(await updates.coordinator.deps.risks(), { busy: ['busy', 'unseen'], busyTabs: [tabs[0], tabs[2]], deferrable: [], unobserved: true });
   const answered = setup({ tabs: tabs.slice(1), codexActive: false });
-  assert.deepEqual(await answered.updates.coordinator.deps.risks(), { busy: [], unobserved: false });
+  assert.deepEqual(await answered.updates.coordinator.deps.risks(), { busy: [], busyTabs: [], deferrable: [], unobserved: false });
+});
+
+test('a switch of one agent\'s extensions waits only for that agent\'s turns and for unseen Codex', async () => {
+  const tabs = [
+    { id: 'a', name: 'claude', server: 'running', codexObserved: true, risks: ['Claude is working.'] },
+    { id: 'b', name: 'codex', server: 'running', codexObserved: true, risks: ['Codex is waiting.'] },
+    { id: 'c', name: 'unseen', server: 'running', codexObserved: false },
+    { id: 'd', name: 'edits', server: 'running', codexObserved: true, risks: ['1 file is not saved.'] },
+    { id: 'e', name: 'starting', server: 'starting' },
+    { id: 'f', name: 'quiet', server: 'running', codexObserved: true },
+  ];
+  const conversations = {
+    a: [{ state: 'working' }, { agent: 'codex', state: 'idle' }],
+    b: [{ agent: 'codex', state: 'waiting' }],
+  };
+  const { updates } = setup({ tabs, conversations });
+  const codex = await updates.coordinator.deps.risks({ agent: 'codex' });
+  assert.deepEqual(codex.busy, ['codex', 'unseen', 'starting']);
+  assert.deepEqual(codex.deferrable.map((tab) => tab.name), ['claude', 'edits']);
+  assert.equal(codex.unobserved, true);
+  const claude = await updates.coordinator.deps.risks({ agent: 'claude' });
+  assert.deepEqual(claude.busy, ['claude', 'unseen', 'starting']);
+  assert.deepEqual(claude.deferrable.map((tab) => tab.name), ['codex', 'edits']);
 });
 
 test('the download is reported at most once a second', () => {

@@ -68,6 +68,17 @@ function leftOutExtensions(agents) {
     .flatMap((agent) => [agent.extension, ...agent.pack].map((id) => id.toLowerCase()));
 }
 
+// The agent whose extension and the rest of its pack hold every one of `ids`, or null.
+function agentFor(ids) {
+  const lowered = (ids || []).map((id) => String(id).toLowerCase());
+  if (!lowered.length) return null;
+  const agent = Object.values(AGENTS).find((each) => {
+    const own = [each.extension, ...each.pack].map((id) => id.toLowerCase());
+    return lowered.every((id) => own.includes(id));
+  });
+  return agent ? agent.id : null;
+}
+
 function extensionAgents(ids) {
   const lowered = new Set((ids || []).map((id) => String(id).toLowerCase()));
   return Object.values(AGENTS).filter((agent) => lowered.has(agent.extension.toLowerCase())).map((agent) => agent.id);
@@ -119,6 +130,7 @@ module.exports = {
   AGENTS,
   DEFAULT_AGENT,
   agentExtensions,
+  agentFor,
   codexSetupWarnings,
   effectiveBranchAgent,
   extensionAgents,
