@@ -47,7 +47,7 @@ VS Code settings are shared among the tabs of worktrees of the same repository, 
 
 ## First use
 
-- The first time you open a WSL tab, the app downloads the Linux build of code-server (about 210 MB) on Windows and extracts it to `~/.worktabs/code-server` in WSL. Extensions of the same versions as the Windows tabs are installed to `~/.worktabs/extensions` in WSL.
+- The first time you open a WSL tab, the app downloads the Linux build of code-server (about 210 MB) on Windows and extracts it to `~/.worktabs/code-server` in WSL. Extensions of the same versions as the Windows tabs are installed to `~/.worktabs/extensions` in WSL. Other tabs opened in the same distribution meanwhile wait for this and then start.
 - claude needs a separate login in `~/.claude` in WSL (start `claude` once in a WSL terminal and log in).
 - When WSL is stopped, the first tab takes a few extra seconds to start.
 

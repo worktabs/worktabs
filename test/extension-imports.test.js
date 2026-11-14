@@ -311,12 +311,12 @@ test('WSL selects Linux imports, leaves busy installs alone, and refreshes unpin
     extensionSpecs: (target) => { assert.equal(target, 'linux-x64'); return ['acme.agent-2.0.0.vsix', 'anthropic.claude-code']; },
     wsl: { readFile: async () => have, writeFile: async () => calls.push('copy') }, installExtension: async (spec) => calls.push(spec),
   };
-  await WslCodeServerManager.prototype.syncExtensions.call(manager);
+  await WslCodeServerManager.prototype.doSyncExtensions.call(manager);
   assert.deepEqual(calls, []);
   const vsix = path.join(root, 'acme.agent-2.0.0.vsix');
   fs.writeFileSync(vsix, 'linux payload');
   manager.extensionSpecs = () => [vsix, 'anthropic.claude-code'];
   manager.instances.clear();
-  await WslCodeServerManager.prototype.syncExtensions.call(manager, { force: true });
+  await WslCodeServerManager.prototype.doSyncExtensions.call(manager, { force: true });
   assert.deepEqual(calls, ['copy', '/home/me/.worktabs/vsix/acme.agent-2.0.0.vsix', 'anthropic.claude-code']);
 });

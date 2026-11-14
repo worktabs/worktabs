@@ -84,6 +84,7 @@ class WslCodeServerManager extends InstanceManager {
     this.home = null; // the distribution's $HOME, once read
     this.codeServerDir = null; // the code-server the tabs start on, once prepared
     this.preparing = null;
+    this.syncing = null; // the extension sync running, see syncExtensions
     // The instances' files, as code-server.js's localFiles has them on Windows.
     this.files = {
       join: path.posix.join,
@@ -256,7 +257,26 @@ class WslCodeServerManager extends InstanceManager {
   // with `force` (an update) or while no tab runs here. Installing marks the version it replaces
   // obsolete, and the next code-server that serves a page deletes it, even while another tab
   // still runs it. The helper extension goes in at the app's version.
+  //
+  // One sync runs at a time, as prepare does. The tabs that waited on prepare reach this all at
+  // once, and an update's forced sync can come with them. Each would install the same missing
+  // extension into the shared extensions folder, where code-server extracts it beside its place
+  // and renames it in, and all but the first fail with ENOTEMPTY (#69). A sync that waited reads
+  // extensions.json again, so it skips what the one before installed, and a forced one still
+  // replaces what it would have. A failed sync does not stop the next: that one tries again.
+  /** @param {{ force?: boolean }} [options] */
   async syncExtensions({ force = false } = {}) {
+    while (this.syncing) await this.syncing.catch(() => {});
+    this.syncing = this.doSyncExtensions({ force });
+    try {
+      return await this.syncing;
+    } finally {
+      this.syncing = null;
+    }
+  }
+
+  /** @param {{ force?: boolean }} [options] */
+  async doSyncExtensions({ force = false } = {}) {
     let windowsList = null;
     try {
       windowsList = fs.readFileSync(path.join(this.windowsExtensionsDir, 'extensions.json'), 'utf8');
@@ -306,7 +326,8 @@ class WslCodeServerManager extends InstanceManager {
   }
 
   // Brings the distribution to what an update installed on Windows: the code-server release and
-  // the extension versions. Only for a distribution in use in this run.
+  // the extension versions. Only for a distribution in use in this run. Its sync waits for that of
+  // a tab starting meanwhile (syncExtensions).
   async applyUpdate(onProgress) {
     if (!this.home) return;
     await this.prepare({ install: true, onProgress });
