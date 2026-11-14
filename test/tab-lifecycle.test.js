@@ -44,7 +44,7 @@ function setup(overrides = {}) {
     placeholder: (tab, state, detail) => events.push(['placeholder', tab.id, state, detail]),
     exitError: (code) => `exit ${code}`,
     cleanup: (tab, options) => {
-      events.push(['cleanup', tab.id, options.keepCodex]);
+      events.push(['cleanup', tab.id, options.keepRows]);
       sessions.clearTab(tab.id, options);
     },
     activate: (tab) => events.push(['activate', tab.id]),
@@ -53,8 +53,8 @@ function setup(overrides = {}) {
     canClose: () => true,
     remember: async (tab) => events.push(['remember', tab.id]),
     reload: (tab) => events.push(['reload', tab.id]),
-    metadata: (tab) => ({ provider: tab.provider, conversations: sessions.codexHistory(tab.id) }),
-    restoreMetadata: (tab, entry) => sessions.restoreCodexHistory(tab.id, entry.conversations),
+    metadata: (tab) => ({ provider: tab.provider, conversations: sessions.history(tab.id) }),
+    restoreMetadata: (tab, entry) => sessions.restoreHistory(tab.id, entry.conversations),
     clearStorage: (ports) => events.push(['clearStorage', ports]),
     save: () => events.push(['save']),
     changed: () => events.push(['changed']),
@@ -201,14 +201,14 @@ test('saved tabs, history and ports survive opening and closing tabs during prep
     conversations: [{ agent: 'codex', threadId: 'saved', archived: true }] }, { folder: b, port: 4201 }], active: a }, () => true);
   const early = open('early', { start: true, activate: true });
   assert.deepEqual(lifecycle.snapshot().tabs.map((tab) => tab.folder), [a, b, early.folder]);
-  assert.equal(sessions.codexHistory(a.toLowerCase())[0].archived, true);
+  assert.equal(sessions.history(a.toLowerCase())[0].archived, true);
   await lifecycle.close(a.toLowerCase(), { force: true });
   const during = lifecycle.snapshot();
   assert.deepEqual(during.tabs.map((tab) => tab.folder), [b, early.folder]);
   assert.equal(during.tabs[0].port, 4201);
   assert.equal(during.ports[a], 4200);
   assert.equal(during.active, early.folder);
-  assert.equal(sessions.codexHistory(a.toLowerCase()).length, 0);
+  assert.equal(sessions.history(a.toLowerCase()).length, 0);
   gate.complete();
   await lifecycle.start(early);
   assert.equal(starts.length, 1);
@@ -446,21 +446,22 @@ test('a failed repository lookup starts no server and is reported on the tab', a
   assert.equal(starts.length, 0);
 });
 
-test('suspending keeps Codex history and the port; closing removes the history', async () => {
+test('suspending keeps the Codex and Claude history and the port; closing removes the history', async () => {
   const { lifecycle, sessions, starts, open } = setup();
   const tab = open('a', { provider: 'codex' });
-  sessions.restoreCodexHistory(tab.id, [{ agent: 'codex', threadId: 'thread-1', title: 'Saved conversation', cwd: tab.folder }]);
+  sessions.restoreHistory(tab.id, [{ agent: 'codex', threadId: 'thread-1', title: 'Saved conversation', cwd: tab.folder }]);
   await lifecycle.start(tab);
-  const history = sessions.codexHistory(tab.id);
-  assert.equal(history.length, 1);
+  sessions.handle(tab.id, { session_id: 'claude-1', hook_event_name: 'UserPromptSubmit', cwd: tab.folder }, '300');
+  const history = sessions.history(tab.id);
+  assert.deepEqual(history.map((item) => item.agent), ['codex', 'claude']);
   await lifecycle.suspend(tab, { force: true });
   assert.equal(tab.server, 'sleeping');
-  assert.deepEqual(sessions.codexHistory(tab.id), history);
+  assert.deepEqual(sessions.history(tab.id), history);
   lifecycle.activate(tab.id);
   await lifecycle.start(tab);
   assert.equal(starts[1].port, starts[0].port || 4001);
   await lifecycle.close(tab.id, { force: true });
-  assert.equal(sessions.codexHistory(tab.id).length, 0);
+  assert.equal(sessions.history(tab.id).length, 0);
   assert.equal(lifecycle.ports.port(tab.id), 4001);
 });
 
@@ -626,7 +627,7 @@ test('restore keeps background tabs lazy, metadata and ports, and clears absent 
   assert.deepEqual(starts[0].options.avoid, new Set([4200, 4203]));
   assert.equal(lifecycle.tabs.get(a.toLowerCase()).server, 'sleeping');
   assert.equal(snapshot.tabs[0].provider, 'codex');
-  assert.equal(sessions.codexHistory(a.toLowerCase()).length, 1);
+  assert.equal(sessions.history(a.toLowerCase()).length, 1);
   assert.equal(snapshot.tabs[0].conversations[0].threadId, 'thread-1');
   assert.equal(snapshot.active, b);
   assert.deepEqual(snapshot.ports, { [closed]: 4203 });

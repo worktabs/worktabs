@@ -459,8 +459,8 @@ function tabDependencies() {
     canClose: () => Boolean(win),
     remember: (tab) => rememberChatWidth(tab),
     reload: (tab) => tab.view.webContents.reload(),
-    metadata: (tab) => ({ provider: tabAgent(tab), conversations: sessions.codexHistory(tab.id) }),
-    restoreMetadata: (tab, entry) => sessions.restoreCodexHistory(tab.id, entry.conversations),
+    metadata: (tab) => ({ provider: tabAgent(tab), conversations: sessions.history(tab.id) }),
+    restoreMetadata: (tab, entry) => sessions.restoreHistory(tab.id, entry.conversations),
     clearStorage: clearPortStorage,
     save: saveTabs,
     changed: pushState,
@@ -571,10 +571,10 @@ function cycleTab(step) {
   activateTab(lifecycle.order[(index + step + lifecycle.order.length) % lifecycle.order.length]);
 }
 
-// Runtime state is cleared for both agents. Codex history stays for a stopped open tab;
-// closing removes it too. Reveal timers are cleared by the lifecycle on the captured tab.
-function clearTabRuntime(tab, { keepCodex }) {
-  sessions.clearTab(tab.id, { keepCodex });
+// Runtime state is cleared for both agents. Conversation rows stay, idle, for a stopped open tab;
+// closing removes them. Reveal timers are cleared by the lifecycle on the captured tab.
+function clearTabRuntime(tab, { keepRows }) {
+  sessions.clearTab(tab.id, { keepRows });
   codexUsage.clearTab(tab.id);
   helpers.delete(tab.id);
 }

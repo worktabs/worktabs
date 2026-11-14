@@ -145,28 +145,79 @@ test('tabState shows the most urgent state among the tab\'s sessions', (t) => {
   assert.equal(tracker.tabState('tab2'), null);
 });
 
-test('a session ends when the last process that holds it ends it', (t) => {
+// [id, state, unread] of a tab's rows.
+const rows = (tracker, tabId) => tracker.conversations(tabId).map((c) => [c.id, c.state, c.unread]);
+
+test('a conversation rests as an idle row once the last process that holds it ends it, and a session with none goes', (t) => {
   const tracker = makeTracker(t);
-  tracker.handle('tab1', hook('UserPromptSubmit'), '101');
+  tracker.handle('tab1', hook('UserPromptSubmit', { transcript_path: '/t/s1.jsonl' }), '101');
   tracker.handle('tab1', hook('UserPromptSubmit'), '102');
+  tracker.handle('tab1', hook('Stop'), '102');
+  tracker.markUnread('s1');
   tracker.handle('tab1', hook('SessionEnd'), '101');
-  assert.equal(tracker.conversations('tab1').length, 1);
+  assert.deepEqual(rows(tracker, 'tab1'), [['s1', 'done', true]]);
   tracker.handle('tab1', hook('SessionEnd'), '102');
-  assert.equal(tracker.conversations('tab1').length, 0);
+  assert.deepEqual(rows(tracker, 'tab1'), [['s1', 'idle', false]]);
+  // Nothing writes to its transcript now, so it is not read until a hook names it again.
+  assert.equal(tracker.sessions.get('s1').transcript, null);
+  tracker.handle('tab1', hook('SessionStart', { source: 'resume', transcript_path: '/t/s1.jsonl' }), '103');
+  assert.equal(tracker.sessions.get('s1').transcript, '/t/s1.jsonl');
+
+  tracker.handle('tab1', hook('SessionStart', { session_id: 'blank', source: 'startup' }), '104');
+  tracker.handle('tab1', hook('SessionEnd', { session_id: 'blank' }), '104');
+  assert.equal(tracker.sessions.has('blank'), false);
 });
 
-test('a session from an older wrapper, without process ids, ends with SessionEnd', (t) => {
+test('a session from an older wrapper, without process ids, rests with SessionEnd', (t) => {
   const tracker = makeTracker(t);
   tracker.handle('tab1', hook('UserPromptSubmit'));
   tracker.handle('tab1', hook('SessionEnd'));
-  assert.equal(tracker.conversations('tab1').length, 0);
+  assert.deepEqual(rows(tracker, 'tab1'), [['s1', 'idle', false]]);
 });
 
 test('a process that moves on to another conversation no longer holds the one before', (t) => {
   const tracker = makeTracker(t);
   tracker.handle('tab1', hook('UserPromptSubmit', { session_id: 'before' }), '101');
   tracker.handle('tab1', hook('UserPromptSubmit', { session_id: 'after' }), '101');
-  assert.deepEqual(tracker.conversations('tab1').map((c) => c.id), ['after']);
+  assert.deepEqual(rows(tracker, 'tab1'), [['before', 'idle', false], ['after', 'working', false]]);
+  assert.equal(tracker.sessions.get('before').procs.size, 0);
+});
+
+test('Claude rows are saved without runtime state, come back idle and archived as they were, and resume in place', (t) => {
+  const tracker = makeTracker(t);
+  tracker.handle('tab1', hook('UserPromptSubmit', { session_id: 'named', cwd: '/repo', transcript_path: '/t/named.jsonl' }), '101');
+  tracker.updateTranscript(tracker.sessions.get('named'), [{ type: 'ai-title', aiTitle: 'AI title' },
+    { type: 'custom-title', customTitle: 'Mine' }, { type: 'last-prompt', lastPrompt: 'Fix it' }]);
+  tracker.handle('tab1', hook('Stop', { session_id: 'named' }), '101');
+  tracker.markUnread('named');
+  tracker.handle('tab1', hook('UserPromptSubmit', { session_id: 'hidden' }), '102');
+  tracker.handle('tab1', hook('Stop', { session_id: 'hidden' }), '102');
+  assert.ok(tracker.archive('tab1', 'hidden'));
+  tracker.handle('tab1', hook('SessionStart', { session_id: 'blank', source: 'startup' }), '103');
+  const saved = JSON.parse(JSON.stringify(tracker.history('tab1')));
+  assert.deepEqual(saved, [
+    { agent: 'claude', sessionId: 'named', title: 'Mine', aiTitle: 'AI title', prompt: 'Fix it', cwd: '/repo', archived: false },
+    { agent: 'claude', sessionId: 'hidden', title: null, aiTitle: null, prompt: null, cwd: null, archived: true },
+  ]);
+
+  const restored = makeTracker(t);
+  restored.restoreHistory('tab1', [...saved, { agent: 'claude', sessionId: '../bad' }, { agent: 'claude', sessionId: 7 },
+    { agent: 'claude', threadId: 'other' }, { agent: 'claude', sessionId: 'named', title: 'Duplicate' }]);
+  // A session is one tab's at a time.
+  restored.restoreHistory('tab2', saved);
+  assert.deepEqual(restored.conversations('tab1').map((c) => [c.id, c.title, c.prompt, c.state, c.unread, c.cwd]),
+    [['named', 'Mine', 'Fix it', 'idle', false, '/repo']]);
+  assert.deepEqual(restored.conversations('tab2'), []);
+  assert.equal(restored.sessions.get('hidden').archived, true);
+  assert.equal(restored.sessions.get('named').transcript, null);
+  assert.equal(restored.procs.size, 0);
+  assert.deepEqual(restored.history('tab1'), saved);
+
+  // Clicking the row resumes the conversation, whose hooks come to the same row.
+  restored.handle('tab1', hook('SessionStart', { session_id: 'named', source: 'resume', transcript_path: '/t/named.jsonl' }), '201');
+  restored.handle('tab1', hook('UserPromptSubmit', { session_id: 'named' }), '201');
+  assert.deepEqual(restored.conversations('tab1').map((c) => [c.id, c.state]), [['named', 'working']]);
+  assert.deepEqual([...restored.sessions.get('named').procs], ['201']);
 });
 
 test('poll ends the sessions whose processes have exited', async (t) => {
@@ -178,8 +229,8 @@ test('poll ends the sessions whose processes have exited', async (t) => {
   changes.length = 0;
 
   await tracker.poll();
-  assert.deepEqual(tracker.conversations('tab1').map((c) => c.id), ['alive']);
-  assert.deepEqual(tracker.conversations('tab2'), []);
+  assert.deepEqual(rows(tracker, 'tab1'), [['alive', 'working', false]]);
+  assert.deepEqual(rows(tracker, 'tab2'), [['gone', 'idle', false]]);
   assert.deepEqual(changes, ['tab2']);
 });
 
@@ -195,7 +246,7 @@ test('poll leaves processes of WSL alone, and endProc ends their sessions', asyn
   assert.deepEqual(tracker.conversations('tab1').map((c) => c.id), ['wsl', 'other']);
   tracker.endProc('wsl:Ubuntu:4242');
   tracker.endProc('wsl:Ubuntu:9999');
-  assert.deepEqual(tracker.conversations('tab1').map((c) => c.id), ['other']);
+  assert.deepEqual(rows(tracker, 'tab1'), [['wsl', 'idle', false], ['other', 'working', false]]);
   assert.deepEqual(changes, ['tab1']);
 });
 

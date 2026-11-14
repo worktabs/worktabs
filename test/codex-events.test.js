@@ -196,9 +196,9 @@ test('delegated thread metadata labels children, persists their parent, and keep
     assert.equal(tracker.isSubagent(row.id), true);
     observer.load({ id: 'child', parentThreadId: 'parent', status: { type: 'active' } }, true);
     assert.equal(tracker.conversations('tab')[0].agentNickname, 'Locke');
-    const saved = tracker.codexHistory('tab');
+    const saved = tracker.history('tab');
     const restored = new ConversationStore();
-    restored.restoreCodexHistory('tab', saved);
+    restored.restoreHistory('tab', saved);
     assert.equal(restored.conversations('tab')[0].subagent, true);
     assert.equal(restored.conversations('tab')[0].parentThreadId, 'parent');
     assert.equal(restored.conversations('tab')[0].agentNickname, 'Locke');
@@ -392,13 +392,14 @@ test('Codex navigation metadata survives JSON persistence without reviving busy 
   tracker.handleCodex('tab', { threadId: 'hidden', state: 'idle', conversation: true, prompt: 'Hidden task' }, 'wsl:ubuntu:100');
   tracker.archive('tab', 'codex:tab:hidden');
   tracker.handle('tab', { session_id: 'claude', hook_event_name: 'UserPromptSubmit' }, 'wsl:ubuntu:200');
-  const saved = JSON.parse(JSON.stringify(tracker.codexHistory('tab')));
-  assert.equal(saved.length, 2);
+  const saved = JSON.parse(JSON.stringify(tracker.history('tab')));
+  assert.deepEqual(saved.map((item) => item.agent), ['codex', 'codex', 'claude']);
   assert.ok(!JSON.stringify(saved).includes('procs'));
   assert.ok(!JSON.stringify(saved).includes('unread'));
   const restored = new ConversationStore();
-  restored.restoreCodexHistory('tab', saved);
-  const [row] = restored.conversations('tab');
+  restored.restoreHistory('tab', saved);
+  const [row, claude] = restored.conversations('tab');
+  assert.deepEqual([claude.id, claude.state, claude.agent], ['claude', 'idle', undefined]);
   assert.equal(row.id, 'codex:tab:thread');
   assert.equal(row.title, 'Saved conversation');
   assert.equal(row.prompt, 'Latest task');
@@ -409,17 +410,17 @@ test('Codex navigation metadata survives JSON persistence without reviving busy 
   assert.equal(restored.tabState('tab'), 'idle');
   assert.equal(restored.codexProcs.size, 0);
   restored.handleCodex('tab', { threadId: 'thread', state: 'working', conversation: true }, 'wsl:ubuntu:300');
-  assert.equal(restored.conversations('tab').length, 1);
+  assert.equal(restored.conversations('tab').length, 2);
   assert.equal(restored.conversations('tab')[0].state, 'working');
   restored.handleCodex('tab', { threadId: 'hidden', state: 'working', conversation: true }, 'wsl:ubuntu:300');
-  assert.equal(restored.conversations('tab').length, 2);
+  assert.equal(restored.conversations('tab').length, 3);
 });
 
 test('History restoration ignores malformed records and cannot overwrite live sessions', (t) => {
   const { tracker, send } = setup(t);
   send('turn/started', { turn: { id: 'live' } });
-  tracker.restoreCodexHistory('tab', null);
-  tracker.restoreCodexHistory('tab', [null, {}, { agent: 'claude', threadId: 'other' },
+  tracker.restoreHistory('tab', null);
+  tracker.restoreHistory('tab', [null, {}, { agent: 'claude', threadId: 'other' },
     { agent: 'codex', threadId: '../bad' }, { agent: 'codex', threadId: 12 },
     { agent: 'codex', threadId: 'thread', state: 'idle', title: 'Stale' },
     { agent: 'codex', threadId: 'valid', title: {}, prompt: [], cwd: 1, procs: ['999'] },
@@ -434,17 +435,18 @@ test('History restoration ignores malformed records and cannot overwrite live se
   assert.equal(tracker.sessions.get(rows[1].id).procs.size, 0);
 });
 
-test('Suspension preserves Codex history but closing the tab removes it', (t) => {
+test('Suspension keeps the Codex and Claude rows idle, but closing the tab removes them', (t) => {
   const { tracker, send } = setup(t);
   send('turn/started', { turn: { id: 'turn' } });
   tracker.handle('tab', { session_id: 'claude', hook_event_name: 'UserPromptSubmit' }, 'wsl:ubuntu:200');
-  tracker.clearTab('tab', { keepCodex: true });
-  assert.equal(tracker.conversations('tab').length, 1);
-  assert.equal(tracker.conversations('tab')[0].state, 'idle');
+  tracker.handle('tab', { session_id: 'blank', hook_event_name: 'SessionStart', source: 'startup' }, 'wsl:ubuntu:201');
+  tracker.clearTab('tab', { keepRows: true });
+  assert.deepEqual(tracker.conversations('tab').map((c) => [c.id, c.state]), [['codex:tab:thread', 'idle'], ['claude', 'idle']]);
+  assert.equal(tracker.sessions.has('blank'), false);
   assert.equal(tracker.codexProcs.size, 0);
   assert.equal(tracker.procs.size, 0);
   tracker.clearTab('tab');
-  assert.deepEqual(tracker.codexHistory('tab'), []);
+  assert.deepEqual(tracker.history('tab'), []);
 });
 
 test('Codex archive/delete discard saved rows held by every process', (t) => {
@@ -454,7 +456,7 @@ test('Codex archive/delete discard saved rows held by every process', (t) => {
     send('turn/started', { turn: { id: 'turn' } });
     tracker.handleCodex('tab', { threadId: 'thread', state: 'working', conversation: true }, 'wsl:ubuntu:200');
     send(`thread/${reason}`);
-    assert.deepEqual(tracker.codexHistory('tab'), []);
+    assert.deepEqual(tracker.history('tab'), []);
     assert.equal(tracker.codexProcs.size, 0);
   }
 });
@@ -476,7 +478,7 @@ test('Archive and delete ignore late item events until the thread is explicitly 
   send('turn/started', { turn: { id: 'turn' } });
   send('thread/deleted');
   send('item/completed', { item: { type: 'userMessage', content: [{ type: 'text', text: 'Late' }] } });
-  assert.deepEqual(tracker.codexHistory('tab'), []);
+  assert.deepEqual(tracker.history('tab'), []);
   observer.client({ id: 20, method: 'thread/resume' });
   observer.server({ id: 20, result: { thread: { id: 'thread', preview: 'Restored' } } });
   assert.equal(tracker.conversations('tab').length, 1);
@@ -487,7 +489,7 @@ test('Temporary Codex threads are shown live but never persisted as restorable h
   send('thread/started', { thread: { id: 'thread', ephemeral: true } });
   send('turn/started', { turn: { id: 'temporary' } });
   assert.equal(tracker.conversations('tab')[0].ephemeral, true);
-  assert.deepEqual(tracker.codexHistory('tab'), []);
+  assert.deepEqual(tracker.history('tab'), []);
   tracker.endProc('wsl:ubuntu:100');
   assert.deepEqual(tracker.conversations('tab'), []);
 });
@@ -527,7 +529,7 @@ for (const threadSource of ['thread_title', 'thread_description']) {
         assert.equal(tracker.sessions.size, 0);
         assert.equal(tracker.codexProcs.size, 0);
         assert.deepEqual(tracker.conversations('tab'), []);
-        assert.deepEqual(tracker.codexHistory('tab'), []);
+        assert.deepEqual(tracker.history('tab'), []);
         assert.deepEqual(tracker.inState('working', ['tab']), []);
         assert.deepEqual(tracker.inState('waiting', ['tab']), []);
         assert.equal(tracker.tabState('tab'), null);
@@ -614,7 +616,7 @@ test('Temporary user threads inherit request metadata without matching their pro
   assert.equal(row.state, 'working');
   assert.equal(row.ephemeral, true);
   assert.match(row.prompt, /^You are a helpful assistant/);
-  assert.deepEqual(tracker.codexHistory('tab'), []);
+  assert.deepEqual(tracker.history('tab'), []);
   send('thread/closed');
   assert.deepEqual(tracker.conversations('tab'), []);
 });
@@ -639,7 +641,7 @@ test('Account and quota observation continues while internal conversation events
 
 test('A resume preview cannot overwrite a last prompt restored from Worktabs history', (t) => {
   const { tracker, observer, send } = setup(t);
-  tracker.restoreCodexHistory('tab', [{ agent: 'codex', threadId: 'thread', prompt: 'Saved latest task' }]);
+  tracker.restoreHistory('tab', [{ agent: 'codex', threadId: 'thread', prompt: 'Saved latest task' }]);
   observer.client({ id: 5, method: 'thread/resume' });
   observer.server({ id: 5, result: { thread: { id: 'thread', preview: 'First prompt', status: { type: 'idle' } } } });
   assert.equal(tracker.conversations('tab')[0].prompt, 'Saved latest task');

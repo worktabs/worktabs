@@ -2,6 +2,8 @@
 const { EventEmitter } = require('events');
 const WAITING_NOTIFICATIONS = new Set(['permission_prompt', 'elicitation_dialog']);
 const PRIORITY = ['waiting', 'error', 'working', 'done', 'idle'];
+// The IDs a saved Claude session or Codex thread may have (Claude's are UUIDs).
+const SAVED_ID = /^[A-Za-z0-9_-]{1,200}$/;
 
 function nextState(input) {
   switch (input.hook_event_name) {
@@ -173,16 +175,30 @@ class ConversationStore extends EventEmitter {
     if (!session) return false;
     if (procId) session.procs.delete(procId);
     if (session.procs.size) return false;
-    if (session.provider === 'codex' && session.conversation && !session.ephemeral) {
-      // A closed app-server does not delete the persisted thread. Keep a resumable idle row,
-      // without carrying busy state or unread notifications into the next process.
-      session.state = 'idle';
-      session.since = this.now();
-      session.unread = false;
+    if (this.resumable(session)) {
+      // An ended claude or a closed app-server deletes neither the stored conversation nor the
+      // persisted thread. Keep a row that resumes it when clicked.
+      this.rest(session);
       return true;
     }
     this.sessions.delete(sessionId);
     return true;
+  }
+
+  // Whether a session keeps a row once nothing runs it: a conversation that its agent stores
+  // (a Claude session, a Codex thread that is not ephemeral).
+  resumable(session) {
+    return session.conversation && !session.ephemeral;
+  }
+
+  // An idle row with nothing running it, which carries no busy state or unread result into the
+  // next process. Its transcript is not read until a hook names it again: nothing writes to it,
+  // and reading one in WSL would wake the distribution.
+  rest(session) {
+    session.state = 'idle';
+    session.since = this.now();
+    session.unread = false;
+    session.transcript = null;
   }
 
   // A wrapper process ended. Returns the tab whose conversations ended with it, if any.
@@ -221,10 +237,13 @@ class ConversationStore extends EventEmitter {
     }
   }
 
-  clearTab(tabId, { keepCodex = false } = {}) {
+  // The tab's processes are gone. `keepRows`: the tab stays open (suspended, stopped for an
+  // update, or restarting), so its conversations stay as idle rows; closing it removes them.
+  clearTab(tabId, { keepRows = false } = {}) {
     for (const [id, session] of this.sessions) {
       if (session.tabId !== tabId) continue;
-      if (!keepCodex || session.provider !== 'codex' || !session.conversation || session.ephemeral) this.sessions.delete(id);
+      const keep = keepRows && this.resumable(session);
+      if (!keep) this.sessions.delete(id);
       for (const procId of session.procs) this.procs.delete(procId);
       for (const procId of session.procs) {
         const ids = this.codexProcs.get(procId);
@@ -232,11 +251,7 @@ class ConversationStore extends EventEmitter {
         if (ids?.size === 0) this.codexProcs.delete(procId);
       }
       session.procs.clear();
-      if (keepCodex && session.provider === 'codex') {
-        session.state = 'idle';
-        session.since = this.now();
-        session.unread = false;
-      }
+      if (keep) this.rest(session);
     }
     this.emit('change', tabId);
   }
@@ -275,29 +290,42 @@ class ConversationStore extends EventEmitter {
       }));
   }
 
-  // Store only navigation metadata, never process IDs, live state, transcripts, or credentials.
-  codexHistory(tabId) {
-    return [...this.sessions.values()]
-      .filter((s) => s.tabId === tabId && s.provider === 'codex' && s.conversation && !s.ephemeral)
-      .sort((a, b) => a.seq - b.seq)
-      .map((s) => ({ agent: 'codex', threadId: s.threadId, turnId: s.turnId || null,
-        title: titleOf(s), prompt: s.lastPrompt || null, cwd: s.cwd || null, archived: s.archived,
-        ...(s.subagent ? { subagent: true, parentThreadId: s.parentThreadId,
-          agentNickname: s.agentNickname, agentRole: s.agentRole, agentPath: s.agentPath } : {}) }));
+  // The tab's rows for tabs.json, in the order they started. Store only navigation metadata,
+  // never process IDs, live state, unread marks, transcripts, or credentials. A Claude row keeps
+  // its two titles apart, so that a title given by hand still beats a newer AI one.
+  history(tabId) {
+    return [...this.sessions]
+      .filter(([, s]) => s.tabId === tabId && this.resumable(s))
+      .sort(([, a], [, b]) => a.seq - b.seq)
+      .map(([id, s]) => (s.provider === 'codex'
+        ? { agent: 'codex', threadId: s.threadId, turnId: s.turnId || null,
+          title: titleOf(s), prompt: s.lastPrompt || null, cwd: s.cwd || null, archived: s.archived,
+          ...(s.subagent ? { subagent: true, parentThreadId: s.parentThreadId,
+            agentNickname: s.agentNickname, agentRole: s.agentRole, agentPath: s.agentPath } : {}) }
+        : { agent: 'claude', sessionId: id, title: s.customTitle || null, aiTitle: s.aiTitle || null,
+          prompt: s.lastPrompt || null, cwd: s.cwd || null, archived: s.archived }));
   }
 
-  restoreCodexHistory(tabId, history) {
+  // Brings back what history() saved, as idle rows that run nothing until one is clicked.
+  restoreHistory(tabId, history) {
     if (!Array.isArray(history)) return;
     for (const item of history) {
-      if (item?.agent !== 'codex' || typeof item.threadId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(item.threadId)) continue;
-      const id = `codex:${tabId}:${item.threadId}`;
-      if (this.sessions.has(id)) continue;
+      if (!item || typeof item !== 'object') continue;
       const text = (key) => typeof item[key] === 'string' ? item[key] : null;
-      this.sessions.set(id, { tabId, provider: 'codex', threadId: item.threadId, turnId: text('turnId'),
-        ...(item.subagent === true ? { subagent: true, parentThreadId: text('parentThreadId'),
-          agentNickname: text('agentNickname'), agentRole: text('agentRole'), agentPath: text('agentPath') } : {}),
-        customTitle: text('title'), lastPrompt: text('prompt'), cwd: text('cwd'), archived: item.archived === true,
-        state: 'idle', since: this.now(), procs: new Set(), conversation: true, seq: ++this.seq, unread: false });
+      const row = { tabId, lastPrompt: text('prompt'), cwd: text('cwd'), archived: item.archived === true,
+        state: 'idle', since: this.now(), procs: new Set(), transcript: null, conversation: true, unread: false };
+      if (item.agent === 'codex' && typeof item.threadId === 'string' && SAVED_ID.test(item.threadId)) {
+        const id = `codex:${tabId}:${item.threadId}`;
+        if (this.sessions.has(id)) continue;
+        this.sessions.set(id, { ...row, provider: 'codex', threadId: item.threadId, turnId: text('turnId'),
+          ...(item.subagent === true ? { subagent: true, parentThreadId: text('parentThreadId'),
+            agentNickname: text('agentNickname'), agentRole: text('agentRole'), agentPath: text('agentPath') } : {}),
+          customTitle: text('title'), seq: ++this.seq });
+      } else if (item.agent === 'claude' && typeof item.sessionId === 'string' && SAVED_ID.test(item.sessionId)) {
+        // A Claude session is one tab's at a time: the last tab whose claude ran it.
+        if (this.sessions.has(item.sessionId)) continue;
+        this.sessions.set(item.sessionId, { ...row, customTitle: text('title'), aiTitle: text('aiTitle'), seq: ++this.seq });
+      }
     }
     this.emit('change', tabId);
   }
