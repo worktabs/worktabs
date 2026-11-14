@@ -81,6 +81,13 @@ const state = {
   pulls: new Map(),
   // repo key -> when the repository last had a tab open (ms), from the main process.
   repoUsed: {},
+  // repo key -> whose the repository is on its remote's host ({ host, owner }), from the main
+  // process (remoteOwner in repository-service.js); absent while its remote is not read, or when
+  // that is not on GitHub, GitLab, or Bitbucket (its ghq folder tells it then; ownerOf in model.js).
+  remoteOwners: {},
+  // host/owner (lowercase) -> 'user' for the accounts gh is signed in to, 'org' for their
+  // organizations, from the main process: their rows come first.
+  ownerTypes: {},
   // repo key -> who can see it on GitHub ('public' | 'private' | 'internal'), from the main
   // process; absent while not known.
   visibility: {},
@@ -97,6 +104,9 @@ const state = {
   // Owners (host/owner, lowercase) whose row was expanded or collapsed against the default: one's
   // own account is expanded, an organization collapsed (it may have hundreds).
   ownersToggled: new Set(loadStored('ownersToggled', [])),
+  // The owners folded in the open and the other sections (their keys: ownerKeyOf in model.js).
+  // Each section keeps its own; an owner there is expanded unless folded.
+  ownersFolded: { open: new Set(loadStored('openOwnersFolded', [])), other: new Set(loadStored('otherOwnersFolded', [])) },
   // Repositories of the accounts being cloned (their keys).
   cloning: new Set(),
   // Groups (repositories, and OTHER_KEY) that held an open tab at the last update, or null until
@@ -224,11 +234,12 @@ function groups() {
   return sidebarModel.groups(state, t('Other folders'));
 }
 
-// The two sections of the tree. `open`: the groups with open tabs, the repositories by name
-// (switching tabs does not reorder them) and then the folders outside git. `other`: the
-// repositories without one, those open most recently first, then those never opened by name.
+// The two sections of the tree, each under its owners' rows: `open`, the groups with open tabs,
+// and `other`, the repositories without one. Under an owner, the repositories go by name
+// (switching tabs does not reorder them), and the folders outside git last, under the row of
+// those without an owner.
 function sections() {
-  return sidebarModel.sections(state, t('Other folders'));
+  return sidebarModel.sections(state, t('Other folders'), t('No owner'));
 }
 
 // Reads a repository's worktrees. The rows it had (at start, those of the last run) stay until
@@ -368,12 +379,6 @@ function tickElapsed() {
 
 // ---- Tree -------------------------------------------------------------------------------
 
-// A folder with the conversations to show under it, or null when the filter hides it.
-// The groups of a section that the filter leaves, with the folders to show under each.
-function shownGroups(list) {
-  return sidebarModel.shownGroups(state, list, t('New conversation'));
-}
-
 // A group's rows. Each conversation gets a row under its worktree, even when it is the only
 // one, so the rows look the same however many there are, and one that finished is not hidden
 // behind another that works. A repository's icon brings up its GitHub buttons, unless it is known
@@ -401,34 +406,61 @@ function groupRows({ group, entries, expanded }) {
   return rows;
 }
 
+// The owners of a section that the filter leaves, with the groups to show under each.
+/** @param {'open' | 'other'} section */
+function shownOwnerGroups(section, owners) {
+  return sidebarModel.shownOwnerGroups(state, owners, state.ownersFolded[section], t('New conversation'));
+}
+
+// An owner's row, and unless it is folded, the rows of its repositories. Folded, it shows the most
+// urgent state among their open tabs, as a folded repository does.
+/** @param {'open' | 'other'} section */
+function ownerRows(section, { owner, groups: shown, expanded }) {
+  const count = shown.length;
+  const tabs = shown.flatMap(({ group }) => group.tabs);
+  const row = renderOwner(owner, {
+    count,
+    expanded,
+    lines: [
+      owner.none ? t('No remote on GitHub, GitLab, or Bitbucket, and not in a ghq folder') : '',
+      t('Repositories: {count}', { count }),
+    ].filter(Boolean),
+    badge: !expanded && tabs.length ? mostUrgent(tabs) : null,
+    toggle: () => toggleSectionOwner(section, owner),
+  });
+  return [row, ...(expanded ? shown.flatMap(groupRows) : [])];
+}
+
 function renderTree() {
   const { open, other } = sections();
-  renderSection('open', shownGroups(open));
-  renderSection('other', shownGroups(other));
+  renderSection('open', shownOwnerGroups('open', open));
+  renderSection('other', shownOwnerGroups('other', other));
   unclonedSection.render();
 }
 
-// A section: the groups with open tabs ('open'), or the other repositories ('other'). It folds
-// from its heading, and opens up while filtering. Folded, the open
+// A section: the groups with open tabs ('open'), or the other repositories ('other'), under their
+// owners' rows. It folds from its heading, and opens up while filtering. Folded, the open
 // one's heading shows the most urgent state of its tabs. The open one is hidden while nothing is
 // open, the other one only when the filter leaves nothing in it (empty otherwise, it says so).
+/** @param {'open' | 'other'} name */
 function renderSection(name, shown) {
   const open = name === 'open';
   const expanded = !state.folded.has(name) || Boolean(state.filter);
-  const rows = expanded ? shown.flatMap(groupRows) : [];
+  const groupsShown = shown.flatMap((owner) => owner.groups);
+  const rows = expanded ? shown.flatMap((owner) => ownerRows(name, owner)) : [];
   if (!open && expanded && !state.reposKnown && state.readingRepos) {
-    rows.push(el('div', 'row empty', t('Loading…')));
+    rows.push(el('div', 'row empty note', t('Loading…')));
   }
   if (!open && expanded && nothingYet()) {
-    rows.push(el('div', 'row empty', t('No repositories yet. Add one with "Add repository…" under "＋" at the top, or open a folder with "Open folder…".')));
+    rows.push(el('div', 'row empty note', t('No repositories yet. Add one with "Add repository…" under "＋" at the top, or open a folder with "Open folder…".')));
   }
   document.getElementById(`${name}-tree`).replaceChildren(...rows);
   document.getElementById(`${name}-toggle`).setAttribute('aria-expanded', String(expanded));
-  document.getElementById(`${name}-count`).textContent = String(shown.length);
-  document.getElementById(`${name}-section`).hidden = open ? !shown.length : Boolean(state.filter) && !shown.length;
+  document.getElementById(`${name}-count`).textContent = String(groupsShown.length);
+  document.getElementById(`${name}-section`).hidden = open ? !groupsShown.length : Boolean(state.filter) && !groupsShown.length;
   if (!open) return;
   const dot = document.getElementById('open-dot');
-  const badge = !expanded && mostUrgent(shown.flatMap((s) => s.group.tabs));
+  const badge = !expanded && mostUrgent(groupsShown.flatMap((s) => s.group.tabs));
   dot.hidden = !badge;
   if (badge) {
     dot.className = `dot ${badge}`;
@@ -457,6 +489,23 @@ function saveFolded() {
 // A tab opened from the side bar goes to the open section, which is unfolded to show it.
 function unfoldOpenSection() {
   if (state.folded.delete('open')) saveFolded();
+}
+
+// Folds or unfolds an owner's row in the open or the other section; each keeps its own.
+/** @param {'open' | 'other'} section */
+function toggleSectionOwner(section, owner) {
+  const folded = state.ownersFolded[section];
+  if (!folded.delete(owner.key)) folded.add(owner.key);
+  store(`${section}OwnersFolded`, [...folded]);
+  render();
+}
+
+// Unfolds the owner of a group in a section, so that what just came to the group there shows: a
+// tab that opened, a repository just cloned.
+/** @param {'open' | 'other'} section */
+function unfoldOwner(section, group) {
+  const folded = state.ownersFolded[section];
+  if (folded.delete(sidebarModel.ownerKeyOf(state, group))) store(`${section}OwnersFolded`, [...folded]);
 }
 
 // ---- Repositories not cloned ------------------------------------------------------------
@@ -582,7 +631,7 @@ function renderRefresh() {
 // let go (pressHold in press.js). The asks come in bursts, so they render once a frame.
 const renders = pressHold(renderNow);
 // Row actions stay in the page; renderers do not start reads or own interaction timers.
-const { renderGroup, renderFolder, renderConversation, visibilityMark } = createSidebarRows({
+const { renderOwner, renderGroup, renderFolder, renderConversation, visibilityMark } = createSidebarRows({
   state, host: window.host, dom: { el, icon, logo, agentIcon, rowButton },
   select: { sourceLabel, providerOf, approvedOf, approvedLines, mostUrgent, folderName, branchOf,
     badgeOf, pullOf, madeFrom, headChecks, hasBranchPage, conversationBadge, conversationName,
@@ -593,7 +642,7 @@ const { renderGroup, renderFolder, renderConversation, visibilityMark } = create
 
 // The section of the repositories not cloned (uncloned.js).
 const unclonedSection = createUnclonedSection({
-  state, host: window.host, document, dom: { el, icon, logo, rowButton },
+  state, host: window.host, document, dom: { el, logo, rowButton, ownerRow: renderOwner },
   select: { shownOwners, visibilityMark }, actions: { toggleOwner }, visibilities: VISIBILITIES, t,
 });
 
@@ -614,7 +663,8 @@ function renderNow() {
 }
 
 // Expands (and reads) a group when a tab first opens in it, and collapses it when its last tab
-// closes. Before the tabs are known every group would look closed, so it waits for them.
+// closes. Before the tabs are known every group would look closed, so it waits for them. Its
+// owner in the open section unfolds too, except at start, where the owners stay as they were.
 function followOpenTabs() {
   if (!state.tabsKnown) return;
   const open = new Set(state.tabs.map(groupKeyOf).filter((key) => key !== undefined));
@@ -623,6 +673,7 @@ function followOpenTabs() {
     if (state.openRepos && state.openRepos.has(key)) continue;
     const group = groups().find((g) => g.key === key);
     if (group && group.git) loadWorktrees(group);
+    if (group && state.openRepos) unfoldOwner('open', group);
   }
   state.openRepos = open;
   saveExpanded();
@@ -656,14 +707,16 @@ function takeRepos(repos) {
 }
 
 // Takes what the main process says of the repository list ({ seq, repos, reading, visibility,
-// providers, uncloned, approved }), unless a later word has come first: its replies and its
-// messages may cross.
-function takeRepoMessage({ seq, repos, reading, visibility, providers, uncloned, approved }) {
+// providers, owners, ownerTypes, uncloned, approved }), unless a later word has come first: its
+// replies and its messages may cross.
+function takeRepoMessage({ seq, repos, reading, visibility, providers, owners, ownerTypes, uncloned, approved }) {
   if (seq <= state.repoSeq) return;
   state.repoSeq = seq;
   state.readingRepos = reading;
   state.visibility = visibility || {};
   state.providers = providers || {};
+  state.remoteOwners = owners || {};
+  state.ownerTypes = ownerTypes || {};
   state.uncloned = uncloned || [];
   state.approved = approved || {};
   renderRefresh();
@@ -722,11 +775,12 @@ window.host.onWorktreeAdded((repo) => {
     saveExpanded();
   }
   const group = groups().find((g) => g.key === keyOf(repo));
+  if (group) unfoldOwner('open', group);
   if (group && group.git) loadWorktrees(group);
   else render();
 });
-// A repository just cloned is one of the other repositories now: that section unfolds, and the
-// repository expands to show its primary, which is scrolled to.
+// A repository just cloned is one of the other repositories now: that section and its owner there
+// unfold, and the repository expands to show its primary, which is scrolled to.
 window.host.onCloned(async (repo) => {
   if (state.folded.delete('other')) saveFolded();
   if (!state.expanded.has(keyOf(repo))) {
@@ -734,6 +788,7 @@ window.host.onCloned(async (repo) => {
     saveExpanded();
   }
   const group = groups().find((g) => g.key === keyOf(repo));
+  if (group) unfoldOwner('other', group);
   if (group && group.git) await loadWorktrees(group);
   else render();
   renders.flush();

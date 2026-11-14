@@ -59,13 +59,24 @@ function githubOf(parts, { hostname = null, hosts = [] } = {}) {
   return { url: `https://${at}/${owner}/${name}`, slug: `${owner}/${name}` };
 }
 
+// Whose the repository at the remote's parts is, on a service the app knows (`provider`, as
+// remoteOf tells it): { host (hostOf), owner: the path before the repository's name }, for the side
+// bar's owner rows. On GitLab that is the group with its subgroups; a Bitbucket Server's web
+// address has /scm/ before its project. null for another remote.
+function ownerOf(parts, provider, hostname = null) {
+  if (!parts || !['github', 'gitlab', 'bitbucket'].includes(provider)) return null;
+  const names = parts.path.split('/').filter(Boolean);
+  if (provider === 'bitbucket' && names[0] === 'scm' && names.length > 2) names.shift();
+  return names.length >= 2 ? { host: hostOf(parts, hostname), owner: names.slice(0, -1).join('/') } : null;
+}
+
 // Where the repository at the remote's parts is: { provider: 'github' | 'gitlab' | 'bitbucket' |
-// 'other', github: its web address and owner/name on GitHub (githubOf), else null }. A path to
-// git, or an address of another form, is 'other'.
+// 'other', github: its web address and owner/name on GitHub (githubOf), else null, owner: whose
+// it is (ownerOf) }. A path to git, or an address of another form, is 'other'.
 function remoteOf(parts, options = {}) {
   const github = githubOf(parts, options);
-  if (github) return { provider: 'github', github };
-  return { provider: (parts && serviceOf(hostOf(parts, options.hostname))) || 'other', github: null };
+  const provider = github ? 'github' : (parts && serviceOf(hostOf(parts, options.hostname))) || 'other';
+  return { provider, github, owner: ownerOf(parts, provider, options.hostname) };
 }
 
 // The web address and owner/name of a remote's repository on GitHub, or null (see githubOf).
@@ -101,4 +112,4 @@ function statusHosts(output) {
   return [...String(output).matchAll(/\blog(?:ged)? in to (\S+)/gi)].map((match) => match[1].toLowerCase());
 }
 
-module.exports = { hostOf, hostnameIn, isGithubHost, jsonHosts, parseRemote, providerOf, remoteOf, remoteParts, serviceOf, statusHosts };
+module.exports = { hostOf, hostnameIn, isGithubHost, jsonHosts, ownerOf, parseRemote, providerOf, remoteOf, remoteParts, serviceOf, statusHosts };

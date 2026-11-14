@@ -7,6 +7,11 @@ const sidebarModel = (() => {
   const isInside = (p, folder) => pathKey(p) === pathKey(folder) || pathKey(p).startsWith(`${pathKey(folder)}\\`);
   const PRIMARY = 'primary';
   const OTHER_KEY = '<other>';
+  // The owner of the repositories whose owner is not known, and of the folders outside git.
+  const NO_OWNER = '<none>';
+  // A folder named as a host is (github.com, ghe.example.com), as ghq names the first folder under
+  // its root (HOST_NAME in clone.js).
+  const HOST_NAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
   // localeCompare with a locale sets up a collator on every call; sorting hundreds of
   // repositories on each render shares this one.
   const NAMES = new Intl.Collator('ja', { sensitivity: 'base' });
@@ -50,13 +55,63 @@ const sidebarModel = (() => {
     return list;
   }
 
-  function sections(state, otherName = 'Other folders') {
-    const byName = (a, b) => NAMES.compare(a.name, b.name);
-    const used = (group) => state.repoUsed[group.key] || 0;
+  // Whose a repository is by where ghq puts one (<root>/<host>/<owner>/<name>): { host, owner },
+  // or null for a folder that is not so, its third name from the end not being a host's (as
+  // cloneRoots in clone.js tells it). C:\project\novel-writing is not.
+  function ghqOwner(folder) {
+    const names = String(folder || '').split(/[\\/]/).filter(Boolean);
+    const host = names[names.length - 3];
+    return names.length >= 4 && HOST_NAME.test(host) ? { host: host.toLowerCase(), owner: names[names.length - 2] } : null;
+  }
+
+  // Whose a group is ({ host, owner }): its remote's owner (state.remoteOwners, from the main
+  // process), else its ghq folder's, while its remote is not read or when it is not on GitHub,
+  // GitLab, or Bitbucket; null for one with neither, and for the folders outside git.
+  function ownerOf(state, group) {
+    if (group.other) return null;
+    return (state.remoteOwners || {})[group.key] || ghqOwner(group.path);
+  }
+
+  // The key of a group's owner row: host/owner, lowercase, or NO_OWNER.
+  function ownerKeyOf(state, group) {
+    const owner = ownerOf(state, group);
+    return owner ? `${owner.host}/${owner.owner}`.toLowerCase() : NO_OWNER;
+  }
+
+  // The groups of a section under their owners' rows, ordered as those of the repositories not
+  // cloned (unclonedGroups in clone.js): the accounts gh is signed in to first (github.com before
+  // the other hosts), then the other owners by name, and last the row of those without one, named
+  // `noOwnerName`. [{ key (ownerKeyOf), host, owner, type: 'user' for an account's own, 'org' for
+  // its organizations (state.ownerTypes), else undefined; none: whether it is the last; groups }].
+  // An owner's repositories in Windows and in WSL share its row. Under it, the repositories go by
+  // name (they stay where they are), and the folders outside git last.
+  function byOwner(state, list, noOwnerName = 'No owner') {
+    const owners = new Map();
+    for (const group of list) {
+      const found = ownerOf(state, group);
+      const key = found ? `${found.host}/${found.owner}`.toLowerCase() : NO_OWNER;
+      if (!owners.has(key)) {
+        owners.set(key, found
+          ? { key, host: found.host, owner: found.owner, type: (state.ownerTypes || {})[key], none: false, groups: [] }
+          : { key, host: '', owner: noOwnerName, type: undefined, none: true, groups: [] });
+      }
+      owners.get(key).groups.push(group);
+    }
+    const sorted = [...owners.values()];
+    for (const owner of sorted) owner.groups.sort((a, b) => Number(Boolean(a.other)) - Number(Boolean(b.other)) || NAMES.compare(a.name, b.name));
+    const rank = (owner) => (owner.none ? 2 : owner.type === 'user' ? 0 : 1);
+    const hosts = (a, b) => Number(a.host !== 'github.com') - Number(b.host !== 'github.com') || NAMES.compare(a.host, b.host);
+    return sorted.sort((a, b) => rank(a) - rank(b)
+      || (rank(a) === 0 ? hosts(a, b) || NAMES.compare(a.owner, b.owner) : NAMES.compare(a.owner, b.owner) || hosts(a, b)));
+  }
+
+  // The two sections of the tree, each under its owners' rows (byOwner): the groups with open tabs
+  // ('open'), and the repositories without ('other').
+  function sections(state, otherName = 'Other folders', noOwnerName = 'No owner') {
     const all = groups(state, otherName);
     return {
-      open: all.filter((g) => g.tabs.length).sort((a, b) => Number(Boolean(a.other)) - Number(Boolean(b.other)) || byName(a, b)),
-      other: all.filter((g) => !g.tabs.length).sort((a, b) => used(b) - used(a) || byName(a, b)),
+      open: byOwner(state, all.filter((g) => g.tabs.length), noOwnerName),
+      other: byOwner(state, all.filter((g) => !g.tabs.length), noOwnerName),
     };
   }
 
@@ -112,15 +167,31 @@ const sidebarModel = (() => {
     return hits.length ? { folder, conversations: hits } : null;
   }
 
-  function shownGroups(state, list, newName = 'New conversation') {
+  // `ownerMatches`: whether the filter matches the owner the groups are under, which shows them all.
+  function shownGroups(state, list, newName = 'New conversation', ownerMatches = false) {
     const shown = [];
     for (const group of list) {
-      const groupMatches = matches(state, group.name, group.owner, group.path);
+      const groupMatches = ownerMatches || matches(state, group.name, group.path);
       const entries = foldersOf(state, group).map((folder) => shownFolder(state, folder, groupMatches, newName)).filter(Boolean);
       if (!groupMatches && !entries.length) continue;
       // While filtering, groups with matching rows open up so the matches are visible.
       const expanded = state.expanded.has(group.key) || (Boolean(state.filter) && entries.length > 0);
       shown.push({ group, entries, expanded });
+    }
+    return shown;
+  }
+
+  // The owners of a section (byOwner) that the filter leaves, with the groups to show under each
+  // (shownGroups): all of those of an owner whose name (or host) matches, as shownOwners does. An
+  // owner is expanded unless folded by hand (`folded`: the keys of the section's owners folded),
+  // and opens up while filtering when rows under it matched.
+  function shownOwnerGroups(state, owners, folded, newName = 'New conversation') {
+    const shown = [];
+    for (const owner of owners) {
+      const ownerMatches = Boolean(state.filter) && !owner.none && matches(state, owner.owner, owner.host === 'github.com' ? '' : owner.host);
+      const list = shownGroups(state, owner.groups, newName, ownerMatches);
+      if (!list.length) continue;
+      shown.push({ owner, groups: list, expanded: !folded.has(owner.key) || (Boolean(state.filter) && !ownerMatches) });
     }
     return shown;
   }
@@ -187,6 +258,6 @@ const sidebarModel = (() => {
   function mostUrgent(tabs) {
     return tabs.map(badgeOf).sort((a, b) => URGENCY.indexOf(a) - URGENCY.indexOf(b))[0];
   }
-  return { tabForFolder, matches, groupKeyOf, groups, sections, followOpenTabs, expandedRepos, foldersOf, ownerExpanded, shownOwners, shownFolder, shownGroups, badgeOf, conversationBadge, conversationName, nestConversations, shortName, folderName, branchOf, mostUrgent, keyOf, basename, dirname, pathKey, isInside };
+  return { tabForFolder, matches, groupKeyOf, groups, ghqOwner, ownerOf, ownerKeyOf, byOwner, sections, followOpenTabs, expandedRepos, foldersOf, ownerExpanded, shownOwners, shownFolder, shownGroups, shownOwnerGroups, badgeOf, conversationBadge, conversationName, nestConversations, shortName, folderName, branchOf, mostUrgent, keyOf, basename, dirname, pathKey, isInside };
 })();
 if (typeof module === 'object') module.exports = sidebarModel;

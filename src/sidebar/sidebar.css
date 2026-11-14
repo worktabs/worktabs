@@ -449,15 +449,23 @@ main section {
 /* The tree's indents: a row's mark sits under the name of the row it is under, so the rows under
    a repository (or an owner) read as its own. A repository's row has no chevron: the indented
    rows under it say that it is expanded, and the chevron's column would take width from every
-   name. */
-main {
-  --indent-repo: 8px;
+   name. Each tree works them out from its own --indent-repo. */
+main [role='tree'] {
+  --indent-owner: 8px;
+  --indent-repo: var(--indent-owner);
   /* A repository's icon (14px) and the row's gap. */
   --indent-worktree: calc(var(--indent-repo) + 21px);
   /* A worktree's dot (10px) and the row's gap, less the margin of a conversation's dot. */
   --indent-conversation: calc(var(--indent-worktree) + 16px);
   /* A conversation's dot and the row's gap: a subagent's dot lines up under its parent's icon. */
   --indent-subagent: 17px;
+}
+
+/* The open and the other repositories are under their owners' rows: an owner's icon (14px) and
+   the row's gap in. */
+#open-tree,
+#other-tree {
+  --indent-repo: calc(var(--indent-owner) + 21px);
 }
 
 .row {
@@ -508,6 +516,11 @@ main {
 
 .row.repo {
   padding-left: var(--indent-repo);
+}
+
+/* An owner's row, which the rows of its repositories are under. */
+.row.owner {
+  padding-left: var(--indent-owner);
 }
 
 .row.worktree {
@@ -565,6 +578,11 @@ main {
   overflow-wrap: anywhere;
 }
 
+/* What a section says of itself (loading, how to add a first repository), under no owner. */
+.row.empty.note {
+  padding-left: var(--indent-repo);
+}
+
 .row.removing {
   opacity: 0.55;
 }
@@ -579,7 +597,12 @@ main {
   margin-left: auto;
 }
 
-/* How many repositories an owner has that are not cloned, at the right end of its row. */
+/* How many repositories an owner has (in the section of those not cloned, how many are not), at
+   the right end of its row. Folded, the dot of its most urgent tab comes before it. */
+.row.owner > .dot + .owner-count {
+  margin-left: 0;
+}
+
 .owner-count {
   flex: none;
   margin-left: auto;
@@ -631,8 +654,7 @@ main {
   margin-right: 27px;
 }
 
-/* A narrow side bar cuts the owner before the repository's name, which the WSL tag
-   already shortens. */
+/* A narrow side bar cuts an owner's host before its name. */
 .row.repo > .detail {
   flex: 0 1000 auto;
 }

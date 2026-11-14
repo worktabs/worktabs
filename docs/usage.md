@@ -8,7 +8,7 @@ Pick a worktree in the sidebar on the left, and its VS Code (code-server) opens 
 
 Claude Code and Codex conversations share the state badges and the working and waiting counters. Codex approval, permission, and user-input requests count as waiting. Clicking a Codex conversation row, a notification, or the next-waiting control switches the Codex chat sidebar to that thread, without opening an editor tab. Background completion and errors send notifications and leave an unread result. Closing, suspending, or restarting a tab warns when either agent is working or waiting.
 
-The sidebar is a tree of repositories → worktrees → conversations.
+The sidebar is a tree of owners → repositories → worktrees → conversations.
 
 When another window is in front, one click on a row brings the Worktabs window to the front and also does what the row does (such as switching tabs). The same holds on macOS, and one click also works in the VS Code of a tab ([architecture.md](architecture.md#rebuilding-the-sidebar)).
 
@@ -16,8 +16,8 @@ When another window is in front, one click on a row brings the Worktabs window t
 
 The tree has three sections.
 
-- **Open repositories**: repositories with open tabs (by name), and "Other folders". With no tabs, the whole section is hidden.
-- **Other repositories**: the remaining repositories. They are ordered by how recently they had an open tab. Ones never opened come after, by name. With no repository and no tab at all (for example, without ghq), it says how to add one.
+- **Open repositories**: repositories with open tabs, and "Other folders", under their owners (see "[Owners](#owners)" below). With no tabs, the whole section is hidden.
+- **Other repositories**: the remaining repositories, under their owners. With no repository and no tab at all (for example, without ghq), it says how to add one.
 - **Repositories not cloned**: GitHub repositories of your account and of the orgs you belong to that are not cloned yet (see "[Repositories not cloned](#repositories-not-cloned)" below). Without gh, or when gh is not signed in, the whole section is hidden.
 
 Section headings work like this.
@@ -25,7 +25,24 @@ Section headings work like this.
 - Click a heading to collapse its section. A collapsed "Open repositories" heading shows the badge of the most urgent state among the open tabs. Opening a worktree from the sidebar expands "Open repositories". While you type in the filter, matches are shown even in a collapsed section.
 - "Repositories not cloned" starts collapsed, because with many entries it would make the list of repositories you use every day long. Its heading shows the number of repositories.
 - When you scroll, a section heading stays at the top of its section.
-- The time each repository last had an open tab is recorded in `tabs.json` in the data folder.
+- The time each repository last had an open tab is recorded in `tabs.json` in the data folder. The sections do not use it for their order.
+
+### Owners
+
+In "Open repositories" and "Other repositories", the repositories are under a row for their owner, as in "[Repositories not cloned](#repositories-not-cloned)". The rows of an owner's repositories are indented to the position of the owner's name. A section shows its owner rows even when it has only one owner.
+
+- The owner comes from the repository's remote (origin, or the first remote if there is no origin): its host and owner on GitHub, GitLab (the group with its subgroups, such as `group/sub`), or Bitbucket. For a GitHub repository renamed or moved to another owner, it is the owner GitHub has it under now.
+  - While the remote has not been read yet, or when it is on another host, the owner comes from the folder when it follows the ghq layout (`<root>/<host>/<owner>/<name>`, where the name three levels up looks like a host name, such as `github.com`).
+  - So a folder outside ghq, such as `C:\project\novel-writing`, shows under the owner of its remote (`sunsetoftanahlot` for `github.com/sunsetoftanahlot/novel-writing`), not under "project".
+  - Repositories with neither, folders that are not git, and "Other folders" go under "No owner", at the end of their section.
+- Owners are ordered as in "Repositories not cloned": the accounts gh is signed in to first (github.com before other hosts), then the other owners by name. Under an owner, the repositories are ordered by name, with "Other folders" last. Name order does not move when you switch tabs.
+  - Which owners are your own accounts comes from the repositories read for "Repositories not cloned". With the `unclonedRepos` setting off, all owners are ordered by name.
+- Windows and WSL repositories of one owner share one owner row. Each WSL repository row keeps its "WSL" tag.
+- An owner row shows a person icon (your own account) or an organization icon (any other owner), the owner's name, and the number of its repositories in the section. For an owner on a host other than github.com, the host appears next to the name. Repository rows do not show their owner.
+- Click an owner row to collapse it. Owners start expanded. Each section remembers which of its owners you collapsed, apart from the other section.
+  - A collapsed owner row shows the badge of the most urgent state among the open tabs of its repositories.
+  - When a tab first opens in a repository, its owner in "Open repositories" expands, so the tab shows. A repository you just cloned expands its owner in "Other repositories".
+- This is always on; there is no setting for it. These owner rows have no right-click menu ("Hide this owner" is only for "Repositories not cloned").
 
 ### Repositories
 
@@ -36,7 +53,7 @@ The list shows repositories from ghq (including inside WSL), repositories you ad
   - The list is reloaded on start, when you press the circular arrow, and after "Add repository…". A repository you add appears at once, without waiting for the reload. The list is not reloaded when the window comes to the front, because that would start a stopped WSL each time.
   - For a source that could not be reloaded (such as WSL not answering in time), the previous repositories are kept. The reason is written as one line to `logs\repos.log` in the data folder.
 
-- When you open a tab, its repository moves to "Open repositories" and expands. When its last tab closes, it moves to "Other repositories" and collapses.
+- When you open a tab, its repository moves to "Open repositories", under the same owner, and expands. When its last tab closes, it moves to "Other repositories" and collapses.
   - Repositories in "Other repositories" also start collapsed when the app starts, so that section shows one row per repository. Click one to show its worktrees. It stays expanded until the app quits or you click it again.
 - When collapsed, the repository row shows the badge of the most urgent state among its open tabs.
 - Before the name, an icon shows where the remote (origin, or the first remote if there is no origin) is hosted.
@@ -166,7 +183,9 @@ Worktabs also waits up to five seconds for the requested thread to appear in the
 
 ### Filter
 
-Type in the field at the top to filter by repository name, worktree name, branch name, issue number (`#20`) and title, and conversation title. Esc clears it.
+Type in the field at the top to filter by owner name, repository name, worktree name, branch name, issue number (`#20`) and title, and conversation title. Esc clears it.
+
+- In "Open repositories" and "Other repositories", the filter also matches owner names (and the host of an owner not on github.com). When an owner name matches, all repositories of that owner show (the owner stays expanded or collapsed as it was). An owner with a matching repository expands.
 
 - In "Repositories not cloned", the filter matches repository names and descriptions, and owner names. An owner with a matching repository expands. When an owner name matches, all repositories of that owner show (the owner stays expanded or collapsed as it was).
 

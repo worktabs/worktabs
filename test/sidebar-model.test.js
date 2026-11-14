@@ -18,13 +18,113 @@ test('groups wait for repository lookup and place non-git tabs in the nearest li
   assert.equal(model.isInside('/repo-copy', '/repo'), false);
 });
 
-test('sections order open groups by name and other groups by recency without mutating the catalog', () => {
+test('sections order the groups under an owner by name, not by recent use, without mutating the catalog', () => {
   const repos = ['z', 'b', 'a', 'c'].map((name) => ({ name, path: `/${name}`, git: true }));
   const view = state({ repos, tabs: [{ id: 'z', folder: '/z', repo: '/z' }, { id: 'a', folder: '/a', repo: '/a' }, { id: 'out', folder: '/out', repo: null }], repoUsed: { '/c': 50 } });
-  const sections = model.sections(view);
-  assert.deepEqual(sections.open.map((g) => g.key), ['/a', '/z', '<other>']);
-  assert.deepEqual(sections.other.map((g) => g.key), ['/c', '/b']);
+  const sections = model.sections(view, 'Other folders', 'No owner');
+  // None of them has an owner: they share the row of those without one.
+  assert.deepEqual(sections.open.map((o) => [o.key, o.owner, o.none]), [['<none>', 'No owner', true]]);
+  assert.deepEqual(sections.open[0].groups.map((g) => g.key), ['/a', '/z', '<other>']);
+  assert.deepEqual(sections.other[0].groups.map((g) => g.key), ['/b', '/c']);
   assert.deepEqual(repos.map((r) => r.name), ['z', 'b', 'a', 'c']);
+});
+
+test('a repository\'s owner comes from its remote, else from its ghq folder, else it has none', () => {
+  // ghq's layout: <root>/<host>/<owner>/<name>, in Windows, in WSL, and on mac.
+  assert.deepEqual(model.ghqOwner('C:\\ghq\\github.com\\Acme\\tool'), { host: 'github.com', owner: 'Acme' });
+  assert.deepEqual(model.ghqOwner('\\\\wsl.localhost\\Ubuntu\\home\\me\\ghq\\GitHub.com\\acme\\api'), { host: 'github.com', owner: 'acme' });
+  assert.deepEqual(model.ghqOwner('/Users/me/ghq/gitlab.example.com/team/app'), { host: 'gitlab.example.com', owner: 'team' });
+  // A folder elsewhere is not taken for one: its grandparent is not named as a host is.
+  assert.equal(model.ghqOwner('C:\\project\\novel-writing'), null);
+  assert.equal(model.ghqOwner('C:\\Users\\me\\src\\novel-writing'), null);
+  assert.equal(model.ghqOwner('/github.com/o/r'), null, 'no root above the host');
+
+  const novel = { path: 'C:\\project\\novel-writing', name: 'novel-writing', owner: 'project', git: true };
+  const ghq = { path: 'C:\\ghq\\github.com\\acme\\tool', name: 'tool', owner: 'acme', git: true };
+  const moved = { path: 'C:\\ghq\\github.com\\old\\renamed', name: 'renamed', owner: 'old', git: true };
+  const local = { path: 'C:\\work\\scratch', name: 'scratch', owner: 'work', git: true };
+  const view = state({
+    repos: [novel, ghq, moved, local],
+    remoteOwners: {
+      'c:\\project\\novel-writing': { host: 'github.com', owner: 'sunsetoftanahlot' },
+      // The remote wins over the folder: a repository moved to another owner since it was cloned.
+      'c:\\ghq\\github.com\\old\\renamed': { host: 'github.com', owner: 'new' },
+    },
+  });
+  assert.deepEqual(model.sections(view).other.map((o) => [o.key, o.groups.map((g) => g.name)]), [
+    ['github.com/acme', ['tool']],
+    ['github.com/new', ['renamed']],
+    // Under its remote's owner, not "project".
+    ['github.com/sunsetoftanahlot', ['novel-writing']],
+    // Neither a remote's owner nor a ghq folder: last.
+    ['<none>', ['scratch']],
+  ]);
+  const [, , , scratch] = model.groups(view);
+  assert.equal(model.ownerKeyOf(view, scratch), '<none>');
+  assert.equal(model.ownerOf(view, { other: true, key: '<other>', path: null }), null);
+});
+
+test('owners come as the repositories not cloned do: one\'s own accounts first, then the others by name', () => {
+  const repo = (folder) => ({ path: folder, name: folder.split(/[\\/]/).pop(), git: true });
+  const view = state({
+    repos: [
+      repo('C:\\ghq\\github.com\\zeta\\z1'), repo('C:\\ghq\\github.com\\Beta\\b1'), repo('C:\\ghq\\ghe.example.com\\me\\e1'),
+      repo('C:\\ghq\\github.com\\me\\m2'), repo('C:\\ghq\\github.com\\me\\M1'), repo('C:\\ghq\\gitlab.com\\alpha\\a1'),
+      repo('C:\\ghq\\github.com\\alpha\\a2'), repo('C:\\elsewhere\\x'), repo('C:\\ghq\\github.com\\org\\o1'),
+    ],
+    ownerTypes: { 'github.com/me': 'user', 'ghe.example.com/me': 'user', 'github.com/org': 'org' },
+  });
+  const owners = model.sections(view).other;
+  assert.deepEqual(owners.map((o) => [o.key, o.type]), [
+    // The accounts gh is signed in to, github.com first.
+    ['github.com/me', 'user'],
+    ['ghe.example.com/me', 'user'],
+    // Then the others by name, organizations among them; one name on two hosts, github.com first.
+    ['github.com/alpha', undefined],
+    ['gitlab.com/alpha', undefined],
+    ['github.com/beta', undefined],
+    ['github.com/org', 'org'],
+    ['github.com/zeta', undefined],
+    ['<none>', undefined],
+  ]);
+  assert.deepEqual(owners[0].groups.map((g) => g.name), ['M1', 'm2'], 'by name, case aside');
+  assert.equal(owners[4].owner, 'Beta', 'as its folder spells it');
+});
+
+test('an owner\'s repositories in Windows and in WSL share its row, and each section has its own rows', () => {
+  const win = { path: 'C:\\ghq\\github.com\\acme\\tool', name: 'tool', git: true };
+  const wsl = { path: '\\\\wsl.localhost\\Ubuntu\\home\\me\\ghq\\github.com\\acme\\api', name: 'api', git: true };
+  const wslOpen = { path: '\\\\wsl.localhost\\Ubuntu\\home\\me\\ghq\\github.com\\acme\\web', name: 'web', git: true };
+  const view = state({
+    repos: [win, wsl, wslOpen],
+    tabs: [{ id: 'web', folder: wslOpen.path, repo: wslOpen.path }],
+    remoteOwners: { [win.path.toLowerCase()]: { host: 'github.com', owner: 'acme' } },
+  });
+  const { open, other } = model.sections(view);
+  assert.deepEqual(other.map((o) => [o.key, o.groups.map((g) => g.name)]), [['github.com/acme', ['api', 'tool']]]);
+  assert.deepEqual(open.map((o) => [o.key, o.groups.map((g) => g.name)]), [['github.com/acme', ['web']]]);
+});
+
+test('the filter matches owners, which then show all their repositories, and folded owners open up for matches', () => {
+  const repo = (owner, name) => ({ path: `C:\\ghq\\ghe.example.com\\${owner}\\${name}`, name, git: true });
+  const view = state({ repos: [repo('acme', 'tool'), repo('acme', 'api'), repo('other', 'toolbox'), repo('other', 'site')] });
+  const shown = (filter, folded = new Set()) => {
+    view.filter = filter;
+    return model.shownOwnerGroups(view, model.sections(view).other, folded)
+      .map(({ owner, groups, expanded }) => [owner.owner, groups.map(({ group }) => group.name), expanded]);
+  };
+  assert.deepEqual(shown(''), [['acme', ['api', 'tool'], true], ['other', ['site', 'toolbox'], true]]);
+  assert.deepEqual(shown('', new Set(['ghe.example.com/acme'])), [['acme', ['api', 'tool'], false], ['other', ['site', 'toolbox'], true]]);
+  // An owner's name shows all its repositories; the owner stays as it was.
+  assert.deepEqual(shown('ACM', new Set(['ghe.example.com/acme'])), [['acme', ['api', 'tool'], false]]);
+  // A repository's name shows it alone, and its owner opens up.
+  assert.deepEqual(shown('tool', new Set(['ghe.example.com/acme'])), [['acme', ['tool'], true], ['other', ['toolbox'], true]]);
+  // A host other than github.com matches too.
+  assert.deepEqual(shown('ghe.example').map(([owner]) => owner), ['acme', 'other']);
+  // The row of those without an owner is not matched by its own name.
+  view.repos.push({ path: 'C:\\work\\scratch', name: 'scratch', git: true });
+  view.filter = 'no owner';
+  assert.deepEqual(model.shownOwnerGroups(view, model.sections(view, 'Other', 'No owner').other, new Set()), []);
 });
 
 test('groups expand when a tab first opens in them and collapse when their last tab closes', () => {
@@ -75,9 +175,9 @@ test('sections sort names as Japanese, ignoring case and width, and keep each gr
     tabs: [{ id: 't2', folder: '/r/beta-2', repo: '/r/beta' }, { id: 't1', folder: '/r/beta-1', repo: '/r/beta' }],
   });
   const { open, other } = model.sections(view);
-  assert.deepEqual(open.map((group) => group.tabs.map((tab) => tab.id)), [['t2', 't1']]);
+  assert.deepEqual(open.flatMap((owner) => owner.groups).map((group) => group.tabs.map((tab) => tab.id)), [['t2', 't1']]);
   const expected = names.filter((name) => name !== 'beta').sort((a, b) => a.localeCompare(b, 'ja', { sensitivity: 'base' }));
-  assert.deepEqual(other.map((group) => group.name), expected);
+  assert.deepEqual(other.flatMap((owner) => owner.groups).map((group) => group.name), expected);
 });
 
 test('subagents follow their parent one level in, and orphans stay at the top', () => {

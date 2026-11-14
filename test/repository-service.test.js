@@ -115,6 +115,50 @@ test('renamed remote addresses match owned repositories and approved pulls', asy
   assert.equal(service.approved.get(folder('a').toLowerCase())[0].number, 7);
 });
 
+test('the side bar hears whose each repository is on its remote\'s host, and which owners are the accounts\'', async () => {
+  const key = (name) => folder(name).toLowerCase();
+  const saved = cache([repo('moved'), repo('cloned'), repo('lab'), repo('old-lab'), repo('elsewhere'), repo('none'), repo('unread')], {
+    // GitHub has it under another owner now.
+    [key('moved')]: { ...remote('https://github.com/old/moved'), owner: { host: 'github.com', owner: 'old' }, current: 'https://github.com/New/moved' },
+    // Put in the list by a clone, or kept by a version before: the owner is in its address.
+    [key('cloned')]: remote('https://github.example.com:8443/team/cloned'),
+    [key('lab')]: { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'group/sub' }, visibility: null, current: null },
+    // Kept without its owner by a version before: read once more.
+    [key('old-lab')]: { provider: 'gitlab', url: null, visibility: null, current: null },
+    [key('elsewhere')]: { provider: 'other', url: null, owner: null, visibility: null, current: null },
+    [key('none')]: { provider: 'none', url: null, owner: null, visibility: null, current: null },
+  });
+  saved.owned = [
+    { host: 'github.com', owner: 'Me', type: 'user', name: 'a', url: 'https://github.com/Me/a' },
+    { host: 'github.com', owner: 'org', type: 'org', name: 'b', url: 'https://github.com/org/b' },
+  ];
+  const asked = [];
+  const { service, config } = setup(saved, {
+    remotes: async (folders) => {
+      asked.push(...folders);
+      return new Map([
+        [folder('old-lab'), { provider: 'gitlab', url: null, owner: { host: 'gitlab.com', owner: 'g' } }],
+        [folder('unread'), { provider: 'bitbucket', url: null, owner: { host: 'bitbucket.org', owner: 'team' } }],
+      ]);
+    },
+    owned: async () => saved.owned,
+  });
+  config.unclonedRepos = true;
+  const before = service.message();
+  assert.deepEqual(before.owners, {
+    [key('moved')]: { host: 'github.com', owner: 'New' },
+    [key('cloned')]: { host: 'github.example.com', owner: 'team' },
+    [key('lab')]: { host: 'gitlab.com', owner: 'group/sub' },
+  });
+  assert.deepEqual(before.ownerTypes, { 'github.com/me': 'user', 'github.com/org': 'org' });
+  await service.refreshVisibility();
+  assert.deepEqual(asked, [folder('old-lab'), folder('unread')]);
+  const after = service.message().owners;
+  assert.deepEqual(after[key('old-lab')], { host: 'gitlab.com', owner: 'g' });
+  assert.deepEqual(after[key('unread')], { host: 'bitbucket.org', owner: 'team' });
+  assert.deepEqual(service.remotes.get(key('unread')), { provider: 'bitbucket', url: null, owner: { host: 'bitbucket.org', owner: 'team' }, visibility: null, current: null });
+});
+
 test('visibility replies cannot restore removed repositories or replace a newer remote', async () => {
   const read = deferred();
   const key = folder('a').toLowerCase();

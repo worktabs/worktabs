@@ -13,7 +13,7 @@ Repositories inside WSL (`\\wsl.localhost\<distro>\...`) also open as tabs. It w
   - On a PC without WSL, `"wsl"` does nothing (no error, and startup is not slower).
 - You can also pick a folder inside WSL from "Linux" in Explorer with "Add repository…" or "Open folder…".
 
-In the sidebar, WSL repository rows show "WSL" (hover to see the distro name). Windows repositories do not.
+In the sidebar, WSL repository rows show "WSL" (hover to see the distro name). Windows repositories do not. Windows and WSL repositories of one owner share one owner row ([usage.md](usage.md#owners)).
 
 ## Cloning
 

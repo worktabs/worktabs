@@ -175,9 +175,10 @@ function createGithubClient({ currentBranch, defaultBranch, mainRemote, runAt, r
 
   // Where the main remote of each of `folders` is (readRemote), for the side bar's rows: folder ->
   // { provider: 'github' | 'gitlab' | 'bitbucket' | 'other', or 'none' without a remote; url: the
-  // repository's web address on GitHub, else null }. Those git fails on (a folder gone, a WSL
-  // distribution that does not answer) are left out, to be read another time. `limit` at a time: a
-  // long list would otherwise start a git for each at once.
+  // repository's web address on GitHub, else null; owner: whose it is on GitHub, GitLab, or
+  // Bitbucket ({ host, owner }, ownerOf in github-remote.js), else null }. Those git fails on (a
+  // folder gone, a WSL distribution that does not answer) are left out, to be read another time.
+  // `limit` at a time: a long list would otherwise start a git for each at once.
   async function readRemotes(folders, limit = 8) {
     const found = new Map();
     const queue = [...folders];
@@ -186,7 +187,7 @@ function createGithubClient({ currentBranch, defaultBranch, mainRemote, runAt, r
         const folder = queue.shift();
         try {
           const remote = await readRemote(folder);
-          found.set(folder, remote ? { provider: remote.provider, url: remote.github ? remote.github.url : null } : { provider: 'none', url: null });
+          found.set(folder, remote ? { provider: remote.provider, url: remote.github ? remote.github.url : null, owner: remote.owner } : { provider: 'none', url: null, owner: null });
         } catch {
           // Left out.
         }
