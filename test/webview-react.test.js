@@ -62,6 +62,26 @@ test('deep official-style provider trees keep mounted conversation, permission a
   assert.equal(reactAncestors(excessive).reason, 'ancestor-limit');
 });
 
+test('a long conversation rendered before the input does not hide the mounted session (#75)', () => {
+  const session = (id) => ({ session: { isLoading: { value: false }, loadFailed: { value: false }, sessionId: { value: id } } });
+  const input = { checkVisibility: () => true };
+  const tree = mountReact(input, [session('long')], { alternateProps: [session('stale')] });
+  // The messages: a sibling before the composer, with more fibers than the search may visit.
+  const messages = { return: tree.root, sibling: tree.root.child };
+  let previous = null;
+  for (let i = 0; i < 20000; i++) {
+    const message = { memoizedProps: { index: i }, return: messages };
+    if (previous) previous.sibling = message; else messages.child = message;
+    previous = message;
+  }
+  tree.root.child = messages;
+  assert.deepEqual(conversationProbe('claude', documentOf(input)), { available: true, snapshot: { agent: 'claude', id: 'long' } });
+  assert.equal(reactAncestors(input).props.find((p) => p.session).session.sessionId.value, 'long');
+  // Without the path from the input (no alternate to match), the search of the tree stops.
+  delete tree.alternate.contexts[0].alternate; delete tree.context.alternate;
+  assert.deepEqual(reactAncestors(input), { available: false, reason: 'tree-limit' });
+});
+
 test('missing and malformed roots report explicit unavailable reasons within traversal bounds', () => {
   assert.deepEqual(reactAncestors({}), { available: false, reason: 'missing-fiber' });
   const missing = { __reactFiber$test: {} }; assert.equal(reactAncestors(missing).reason, 'missing-current-root');

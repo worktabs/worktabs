@@ -2,20 +2,38 @@
 // independent of Node, Electron, provider IDs, translated labels, and feature fallbacks.
 // The official Codex webview nests its controls under more than 100 provider fibers.
 // Leave room for those wrappers while keeping unknown or cyclic trees bounded.
+// The props of `element`'s fiber and of its ancestors, nearest first, from the mounted tree.
+// It goes down from the mounted root along the element's ancestors, taking at each level the
+// child that is the ancestor or its alternate, as React does to find a current fiber. A chat
+// renders all its messages before its input, so searching the whole tree goes over maxNodes in a
+// long conversation (#75). The search is left for when that path does not reach the element.
 function reactAncestors(element, { maxDepth = 512, maxNodes = 10000 } = {}) {
   const unavailable = (reason) => ({ available: false, reason });
   try {
     if (!element || element.isConnected === false) return unavailable('detached-node');
     const key = Object.keys(element).find((name) => name.startsWith('__reactFiber$'));
     if (!key || !element[key]) return unavailable('missing-fiber');
-    let root = element[key]; const ancestors = new Set();
+    let root = element[key]; const ancestors = new Set(); const path = [];
     for (let depth = 0; root?.return; depth++) {
       if (depth >= maxDepth) return unavailable('ancestor-limit');
       if (ancestors.has(root)) return unavailable('malformed-tree');
-      ancestors.add(root); root = root.return;
+      ancestors.add(root); path.push(root); root = root.return;
     }
     const current = root?.stateNode?.current;
     if (!current) return unavailable('missing-current-root');
+    let fiber = current; const props = current.memoizedProps ? [current.memoizedProps] : []; const walked = new Set([current]);
+    for (let level = path.length - 1; fiber && level >= 0; level--) {
+      const wanted = path[level]; let child = fiber.child;
+      for (; child; child = child.sibling) {
+        if (walked.has(child)) return unavailable('malformed-tree');
+        if (walked.size >= maxNodes) return unavailable('tree-limit');
+        walked.add(child);
+        if (child === wanted || child === wanted.alternate) break;
+      }
+      fiber = child;
+      if (fiber?.memoizedProps) props.unshift(fiber.memoizedProps);
+    }
+    if (fiber && fiber.stateNode === element) return { available: true, props };
     const stack = [{ fiber: current, props: [], depth: 0 }]; const seen = new Set();
     for (let visited = 0; stack.length; visited++) {
       if (visited >= maxNodes) return unavailable('tree-limit');
