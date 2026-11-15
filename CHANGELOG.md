@@ -2,6 +2,11 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.11.1] - 2026-11-15
+
+### Bug fixes
+- mark the conversation row while a long Claude conversation is in view ([#76](https://github.com/worktabs/worktabs/pull/76))
+
 ## [0.11.0] - 2026-11-14
 
 ### Features
