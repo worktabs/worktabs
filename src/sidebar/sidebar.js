@@ -636,7 +636,7 @@ const { renderOwner, renderGroup, renderFolder, renderConversation, visibilityMa
   select: { sourceLabel, providerOf, approvedOf, approvedLines, mostUrgent, folderName, branchOf,
     badgeOf, pullOf, madeFrom, headChecks, hasBranchPage, conversationBadge, conversationName,
     movedTo, pullChecks, checkLabel, checksLines, sinceText, elapsedText, keyOf },
-  actions: { closeAll, toggle, unfoldOpenSection },
+  actions: { closeAll, toggle, unfoldOpenSection, endSearch },
   text: { LABELS, WAITING_SHORT, WSL_PATH, VISIBILITIES, PULL_STATES, CHECK_ICONS, AGENT_LABELS }, t,
 });
 
@@ -796,16 +796,41 @@ window.host.onCloned(async (repo) => {
   if (row) row.scrollIntoView({ block: 'nearest' });
 });
 
+// Empties the filter (Esc in it, and endSearch).
+function clearFilter() {
+  if (!filterEl.value && !state.filter) return;
+  filterEl.value = '';
+  state.filter = '';
+  render();
+}
+
+// A click that goes to a tab on `folderPath` ends the search: a worktree it opens, an open tab, or
+// a conversation. The filter clears, and the whole tree shows again. While filtering, the rows
+// above a match are open whether or not they were folded; once it clears, folded ones would hide
+// the row gone to. So "Open repositories", the repository's owner there, and the repository
+// unfold first, which also keeps the repository's other worktrees at hand.
+function endSearch(folderPath) {
+  if (!filterEl.value && !state.filter) return;
+  const group = groups().find((g) => foldersOf(g).some((folder) => keyOf(folder.path) === keyOf(folderPath)));
+  unfoldOpenSection();
+  if (group) {
+    unfoldOwner('open', group);
+    if (!state.expanded.has(group.key)) {
+      state.expanded.add(group.key);
+      saveExpanded();
+      // As on an expand by hand (toggle): a folded repository's worktrees may not be read.
+      if (group.git) loadWorktrees(group);
+    }
+  }
+  clearFilter();
+}
+
 filterEl.addEventListener('input', () => {
   state.filter = filterEl.value.trim();
   render();
 });
 filterEl.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    filterEl.value = '';
-    state.filter = '';
-    render();
-  }
+  if (event.key === 'Escape') clearFilter();
 });
 for (const [id, name, onClick] of /** @type {Array<[string, string, () => void]>} */ ([
   ['refresh', 'refresh', () => refresh()],

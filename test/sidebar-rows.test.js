@@ -39,7 +39,7 @@ function setup({ select = {}, state = {} } = {}) {
       checkLabel: (value) => value, checksLines: () => [], sinceText: () => '',
       elapsedText: () => '1m', ...select,
     },
-    actions: { closeAll: action('closeAll'), toggle: action('toggle'), unfoldOpenSection: action('unfold') },
+    actions: { closeAll: action('closeAll'), toggle: action('toggle'), unfoldOpenSection: action('unfold'), endSearch: action('endSearch') },
     text: {
       LABELS: { waiting: 'Waiting for approval', done: 'Done', closed: 'Not open', idle: 'Idle' },
       WAITING_SHORT: 'Waiting', WSL_PATH: /^\\\\wsl\.localhost\\([^\\]+)/i,
@@ -55,14 +55,14 @@ function setup({ select = {}, state = {} } = {}) {
 
 test('conversation rows keep provider labels and prevent archive clicks from revealing the thread', () => {
   const { rows, calls } = setup();
-  const tab = { id: 'tab' };
+  const tab = { id: 'tab', folder: 'C:\\repo' };
   const conversation = { id: 'thread', agent: 'codex', title: 'Review', state: 'waiting', since: 0 };
   const waiting = rows.renderConversation(tab, conversation);
   assert.match(waiting.getAttribute('aria-label'), /Agent: Codex/);
   assert.equal(waiting.classList.contains('attention'), true);
   assert.equal(waiting.querySelector('button.archive'), null);
   waiting.click();
-  assert.deepEqual(calls, [['revealSession', 'tab', 'thread']]);
+  assert.deepEqual(calls, [['endSearch', tab.folder], ['revealSession', 'tab', 'thread']]);
   calls.length = 0;
   const done = rows.renderConversation(tab, { ...conversation, state: 'done' });
   done.querySelector('button.archive').click();
@@ -104,7 +104,7 @@ test('closed worktree actions use the represented folder and retain exact merged
   assert.equal(rows.renderFolder({ ...folder, head: 'other' }).querySelector('button.trash').classList.contains('ready'), false);
   calls.length = 0;
   row.click();
-  assert.deepEqual(calls, [['unfold'], ['open', folder.path]]);
+  assert.deepEqual(calls, [['unfold'], ['endSearch', folder.path], ['open', folder.path]]);
 });
 
 test('a removing worktree offers no open or removal actions while other rows remain interactive', () => {
@@ -116,7 +116,21 @@ test('a removing worktree offers no open or removal actions while other rows rem
   row.click();
   assert.deepEqual(calls, []);
   rows.renderFolder({ ...folder, path: 'C:\\other-task' }).click();
-  assert.deepEqual(calls, [['unfold'], ['open', 'C:\\other-task']]);
+  assert.deepEqual(calls, [['unfold'], ['endSearch', 'C:\\other-task'], ['open', 'C:\\other-task']]);
+});
+
+test('an open worktree row ends the search as it switches to its tab, but its × and middle click do not', () => {
+  const { rows, calls } = setup();
+  const folder = { path: 'C:\\repo-task', repo: 'C:\\repo', name: 'task', branch: 'task',
+    tab: { id: 'tab', server: 'running', active: false } };
+  const row = rows.renderFolder(folder);
+  row.click();
+  assert.deepEqual(calls, [['endSearch', folder.path], ['activate', 'tab']]);
+  calls.length = 0;
+  row.querySelector('button.close').click();
+  const middle = { type: 'mousedown', button: 1, preventDefault() {} };
+  row.dispatchEvent(middle);
+  assert.deepEqual(calls, [['close', 'tab'], ['close', 'tab']]);
 });
 
 test('collapsed repositories preserve urgency, visibility accessibility, and distinct row actions', () => {
