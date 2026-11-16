@@ -321,7 +321,8 @@ In addition, `gitlab.com` and hosts starting with `gitlab.` are treated as GitLa
 ## hooks
 
 - When the extension starts claude, this wrapper adds `--settings <hook-settings.json>`. The hooks apply only to sessions the app manages; neither `~/.claude/settings.json` nor the repository's `.claude/` is changed.
-  - The extension also runs claude's subcommands through the wrapper, such as `claude auth status --json` to check the sign-in. claude rejects `--settings` after a subcommand, and a subcommand starts no session, so the wrapper adds it only when claude's first argument is an option (or there is none).
+  - The wrapper puts `--settings` right after claude's path, before the extension's arguments. The extension also runs claude's subcommands through the wrapper: `claude auth status --json` to check the sign-in, and `claude --setting-sources user workspace-trust --json` to ask whether the folder is trusted. claude rejects `--settings` after a subcommand, and takes it before one. A subcommand starts no session, so the hooks do not run there.
+  - Telling a session from a subcommand by claude's first argument failed on `workspace-trust`, which comes after an option. With no trust report, the extension left out the folder's settings and MCP servers in every session.
 - SessionStart alone cannot be an http hook, so `claude-wrap --hook` forwards it.
 - The wrapper passes its own process ID to claude as `WORKTABS_PROC_ID`, and the hooks add it as a header (`X-Wrapper-Proc`). The extension starts one claude per conversation opened in a panel (even within one panel, each conversation has its own claude), so this tells apart the conversations of each panel.
 - The receiver listens on a random port on `127.0.0.1` and checks a token generated per start.

@@ -4,17 +4,20 @@
 #
 # claude replaces this script, so WORKTABS_PROC_ID (this process's id) is claude's own: it goes
 # into every hook, where the app tells the extension panels' conversations apart, and the WSL
-# agent watches it to see the panel's claude end. The app's hooks are added with --settings
+# agent watches it to see the panel's claude end. The app's hooks are given with --settings
 # when WORKTABS_CLAUDE_SETTINGS names its settings file, so they apply to the sessions it
 # manages only. Worktabs writes this file into the distribution.
 WORKTABS_PROC_ID=$$
 export WORKTABS_PROC_ID
-# A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
-# --settings after it, and starts no session for the hooks anyway. ${2--} is "-" when claude
-# is given no arguments.
-if [ -n "$WORKTABS_CLAUDE_SETTINGS" ]; then
-  case "${2--}" in
-    -*) exec "$@" --settings "$WORKTABS_CLAUDE_SETTINGS" ;;
-  esac
+# --settings goes right after claude's path, before the extension's arguments. claude takes it
+# there as an option of its own, also in front of a subcommand, and rejects it after one: the
+# extension runs "auth status --json" to check the sign-in, and
+# "--setting-sources user workspace-trust --json" to ask whether the folder is trusted. Telling a
+# session from a subcommand by its first argument failed on the latter. A subcommand starts no
+# session, so the hooks in the file do not run there.
+if [ -n "$WORKTABS_CLAUDE_SETTINGS" ] && [ $# -gt 0 ]; then
+  claude=$1
+  shift
+  exec "$claude" --settings "$WORKTABS_CLAUDE_SETTINGS" "$@"
 fi
 exec "$@"
