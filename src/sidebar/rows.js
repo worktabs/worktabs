@@ -199,11 +199,11 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
       if (merged) trash.classList.add('ready');
       row.append(trash);
     }
-    // A click that goes to a tab ends the search: the filter clears (clearFilter in sidebar.js).
+    // A click that goes to a tab ends the search (endSearch in sidebar.js).
     if (!tab) {
       row.addEventListener('click', () => {
         actions.unfoldOpenSection();
-        actions.clearFilter();
+        actions.endSearch(folder.path);
         host.open(folder.path);
       });
       row.addEventListener('contextmenu', (event) => {
@@ -224,7 +224,7 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     row.append(close);
 
     row.addEventListener('click', () => {
-      actions.clearFilter();
+      actions.endSearch(folder.path);
       host.activate(tab.id);
     });
     row.addEventListener('mousedown', (event) => {
@@ -357,7 +357,7 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
       row.append(rowButton('archive', t('Archive (take off the list)'), () => host.archiveSession(tab.id, conversation.id)));
     }
     row.addEventListener('click', () => {
-      actions.clearFilter();
+      actions.endSearch(tab.folder);
       host.revealSession(tab.id, conversation.id);
     });
     row.addEventListener('contextmenu', (event) => {

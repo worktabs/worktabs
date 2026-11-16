@@ -185,7 +185,7 @@ Worktabs also waits up to five seconds for the requested thread to appear in the
 
 Type in the field at the top to filter by owner name, repository name, worktree name, branch name, issue number (`#20`) and title, and conversation title. Esc clears it.
 
-- Clicking a row that goes to a tab also clears it: a closed worktree (opens its tab), an open tab, or a conversation. The repository then shows in "Open repositories", expanded, with its other worktrees. Expanding or collapsing a row, and the buttons on a row, keep the filter.
+- Clicking a row that goes to a tab also clears it: a closed worktree (opens its tab), an open tab, or a conversation. The repository then shows in "Open repositories", expanded, with its other worktrees: the section, the owner, and the repository unfold if they were collapsed. Expanding or collapsing a row, and the buttons on a row, keep the filter.
 
 - In "Open repositories" and "Other repositories", the filter also matches owner names (and the host of an owner not on github.com). When an owner name matches, all repositories of that owner show (the owner stays expanded or collapsed as it was). An owner with a matching repository expands.
 

@@ -426,6 +426,49 @@ test('a click that goes to a tab clears the filter, and one that only expands a 
   assert.deepEqual(names(), ['dotfiles', 'tool']);
 });
 
+test('ending a search on an open tab unfolds the rows above it, which the filter had opened up', async (t) => {
+  const tool = 'C:\\ghq\\github.com\\acme\\tool';
+  const tab = { id: 'tab', folder: tool, repo: tool, branch: 'main', server: 'running', agent: null, conversations: [] };
+  const activated = [];
+  const host = new Proxy({
+    getState: async () => ({ tabs: [tab], removing: [], repoUsed: {}, usage: [] }),
+    getRepos: async () => ({ seq: 1, reading: false, repos: [{ path: tool, name: 'tool', owner: 'acme', git: true, sources: ['ghq'] }],
+      worktrees: { [tool.toLowerCase()]: [{ path: tool, branch: 'main', main: true }] } }),
+    getWorktrees: async (folder) => [{ path: folder, branch: 'main', main: true }],
+    github: async () => null,
+    pullRequests: async () => ({ pulls: {}, heads: {} }),
+    activate: (id) => { activated.push(id); },
+  }, { get: (target, key) => target[key] || (() => {}) });
+  const { document, window } = await loadSidebar({ host });
+  t.after(() => window.dispatchEvent({ type: 'beforeunload' }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const owner = () => document.querySelectorAll('#open-tree .row.owner')[0];
+  const worktree = () => document.querySelectorAll('#open-tree .row.worktree').find((row) => row.dataset.folder === tool);
+  const toggle = document.getElementById('open-toggle');
+
+  // The repository, its owner, and the section, each folded by hand.
+  repoRows(document, 'open')[0].click();
+  owner().click();
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(worktree(), undefined);
+
+  // The filter opens them all up while it is on.
+  const filter = document.getElementById('filter');
+  filter.value = 'tool';
+  filter.dispatchEvent({ type: 'input' });
+  assert.ok(worktree());
+
+  // Going to the tab clears it, and the row gone to stays in view.
+  worktree().click();
+  assert.deepEqual(activated, ['tab']);
+  assert.equal(filter.value, '');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  assert.equal(owner().getAttribute('aria-expanded'), 'true');
+  assert.equal(repoRows(document, 'open')[0].getAttribute('aria-expanded'), 'true');
+  assert.ok(worktree());
+});
+
 test('a repository whose remote git failed to read keeps its GitHub icon, and is not read again on every render', async (t) => {
   const repo = path.join(path.parse(process.cwd()).root, 'repos', 'worktabs');
   const key = repo.toLowerCase();
