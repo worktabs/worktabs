@@ -2,6 +2,14 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-11-16
+
+### Features
+- clear the filter after a click that goes to a tab ([#80](https://github.com/worktabs/worktabs/pull/80))
+
+### Bug fixes
+- give claude the app's settings before its arguments, so the folder's trust check works ([#81](https://github.com/worktabs/worktabs/pull/81))
+
 ## [0.11.1] - 2026-11-15
 
 ### Bug fixes
