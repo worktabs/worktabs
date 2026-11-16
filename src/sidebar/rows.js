@@ -199,9 +199,11 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
       if (merged) trash.classList.add('ready');
       row.append(trash);
     }
+    // A click that goes to a tab ends the search: the filter clears (clearFilter in sidebar.js).
     if (!tab) {
       row.addEventListener('click', () => {
         actions.unfoldOpenSection();
+        actions.clearFilter();
         host.open(folder.path);
       });
       row.addEventListener('contextmenu', (event) => {
@@ -221,7 +223,10 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     });
     row.append(close);
 
-    row.addEventListener('click', () => host.activate(tab.id));
+    row.addEventListener('click', () => {
+      actions.clearFilter();
+      host.activate(tab.id);
+    });
     row.addEventListener('mousedown', (event) => {
       if (event.button === 1) {
         event.preventDefault();
@@ -351,7 +356,10 @@ function createSidebarRows({ state, host, dom, select, actions, text, t, clock =
     if (conversation.state !== 'working' && conversation.state !== 'waiting') {
       row.append(rowButton('archive', t('Archive (take off the list)'), () => host.archiveSession(tab.id, conversation.id)));
     }
-    row.addEventListener('click', () => host.revealSession(tab.id, conversation.id));
+    row.addEventListener('click', () => {
+      actions.clearFilter();
+      host.revealSession(tab.id, conversation.id);
+    });
     row.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       host.showTabMenu(tab.id);

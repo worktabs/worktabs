@@ -636,7 +636,7 @@ const { renderOwner, renderGroup, renderFolder, renderConversation, visibilityMa
   select: { sourceLabel, providerOf, approvedOf, approvedLines, mostUrgent, folderName, branchOf,
     badgeOf, pullOf, madeFrom, headChecks, hasBranchPage, conversationBadge, conversationName,
     movedTo, pullChecks, checkLabel, checksLines, sinceText, elapsedText, keyOf },
-  actions: { closeAll, toggle, unfoldOpenSection },
+  actions: { closeAll, toggle, unfoldOpenSection, clearFilter },
   text: { LABELS, WAITING_SHORT, WSL_PATH, VISIBILITIES, PULL_STATES, CHECK_ICONS, AGENT_LABELS }, t,
 });
 
@@ -796,16 +796,22 @@ window.host.onCloned(async (repo) => {
   if (row) row.scrollIntoView({ block: 'nearest' });
 });
 
+// Empties the filter, on Esc in it, and on a click that goes to a tab: a worktree it opens, an open
+// tab, or a conversation. The search is over then, and the whole tree shows again. The repository
+// gone to is in "Open repositories", expanded, so its other worktrees are still at hand.
+function clearFilter() {
+  if (!filterEl.value && !state.filter) return;
+  filterEl.value = '';
+  state.filter = '';
+  render();
+}
+
 filterEl.addEventListener('input', () => {
   state.filter = filterEl.value.trim();
   render();
 });
 filterEl.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    filterEl.value = '';
-    state.filter = '';
-    render();
-  }
+  if (event.key === 'Escape') clearFilter();
 });
 for (const [id, name, onClick] of /** @type {Array<[string, string, () => void]>} */ ([
   ['refresh', 'refresh', () => refresh()],
