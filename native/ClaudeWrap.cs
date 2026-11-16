@@ -2,7 +2,7 @@
 //
 //   claude-wrap.exe <path-to-claude.exe> <args...>
 //     Process wrapper for the Claude Code extension (claudeCode.claudeProcessWrapper).
-//     Starts claude.exe with the same arguments, plus "--settings <file>" when
+//     Starts claude.exe with the same arguments, after "--settings <file>" when
 //     WORKTABS_CLAUDE_SETTINGS names a settings file, so the app's hooks apply only to the
 //     sessions it manages. claude.exe inherits this process's stdin and stderr (the
 //     extension's stream-json pipes); its stdout is copied through as it comes, and the
@@ -50,16 +50,19 @@ static class ClaudeWrap
         }
 
         var claudeArgs = new StringBuilder();
-        for (int i = 1; i < args.Length; i++) AppendArg(claudeArgs, args[i]);
         string settings = Environment.GetEnvironmentVariable("WORKTABS_CLAUDE_SETTINGS");
-        // A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
-        // --settings after it, and starts no session for the hooks anyway.
-        bool session = args.Length < 2 || args[1].StartsWith("-", StringComparison.Ordinal);
-        if (session && !string.IsNullOrEmpty(settings))
+        // --settings goes before the extension's arguments. claude takes it there as an option of
+        // its own, also in front of a subcommand, and rejects it after one: the extension runs
+        // "auth status --json" to check the sign-in, and
+        // "--setting-sources user workspace-trust --json" to ask whether the folder is trusted.
+        // Telling a session from a subcommand by its first argument failed on the latter. A
+        // subcommand starts no session, so the hooks do not run there.
+        if (!string.IsNullOrEmpty(settings))
         {
             AppendArg(claudeArgs, "--settings");
             AppendArg(claudeArgs, settings);
         }
+        for (int i = 1; i < args.Length; i++) AppendArg(claudeArgs, args[i]);
 
         IntPtr job = CreateKillOnCloseJob();
         var info = new ProcessStartInfo(args[0], claudeArgs.ToString()) { UseShellExecute = false, RedirectStandardOutput = true };

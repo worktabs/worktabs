@@ -13,7 +13,7 @@ const skip = process.platform === 'win32' ? 'needs a POSIX shell' : false;
 // The stand-in for claude as one program (see settingsCases). Writes each argument on a line.
 const ARGS_CHILD = '#!/bin/sh\nprintf \'%s\\n\' "$@"\n';
 
-test('the WSL wrapper adds the app\'s settings to a session, and leaves a subcommand as it is', { skip }, (t) => {
+test('the WSL wrapper puts the app\'s settings before claude\'s arguments, so a subcommand takes them too', { skip }, (t) => {
   const dir = tempDir(t);
   const child = path.join(dir, 'args-child');
   fs.writeFileSync(child, ARGS_CHILD, { mode: 0o755 });

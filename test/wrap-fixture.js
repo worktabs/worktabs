@@ -83,15 +83,21 @@ function runWrapper(command, args, env) {
   });
 }
 
-// What claude must be given, with `settings` as the app's settings file. A session gets the file;
-// a subcommand gets its arguments as they are, as claude rejects --settings after "auth status",
-// which the extension runs to check the sign-in. The stand-in for claude has to be one program
-// here, as claude is: the wrappers look at the argument after it.
+// What claude must be given, with `settings` as the app's settings file: the file first, then the
+// extension's arguments as they are. claude rejects --settings after a subcommand, and takes it
+// before one: the extension runs "auth status --json" to check the sign-in, and
+// "workspace-trust" behind an option of claude's own to ask whether the folder is trusted. The
+// stand-in for claude has to be one program here, as claude is: the wrappers put the file right
+// after it.
 function settingsCases(settings) {
   return [
-    { args: ['--print', '--verbose'], expected: ['--print', '--verbose', '--settings', settings] },
+    { args: ['--print', '--verbose'], expected: ['--settings', settings, '--print', '--verbose'] },
     { args: [], expected: ['--settings', settings] },
-    { args: ['auth', 'status', '--json'], expected: ['auth', 'status', '--json'] },
+    { args: ['auth', 'status', '--json'], expected: ['--settings', settings, 'auth', 'status', '--json'] },
+    {
+      args: ['--setting-sources', 'user', 'workspace-trust', '--json'],
+      expected: ['--settings', settings, '--setting-sources', 'user', 'workspace-trust', '--json'],
+    },
   ];
 }
 

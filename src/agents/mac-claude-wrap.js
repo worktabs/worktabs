@@ -2,7 +2,7 @@
 // which claude-wrap.exe is on Windows. It takes the same command line, in two modes:
 //
 //   claude-wrap <path-to-claude> <args...>
-//     Starts claude with the same arguments, plus "--settings <file>" when
+//     Starts claude with the same arguments, after "--settings <file>" when
 //     WORKTABS_CLAUDE_SETTINGS names a settings file, so the app's hooks apply only to the
 //     sessions it manages. claude inherits this process's stdin and stderr (the extension's
 //     stream-json pipes); its stdout is copied through as it comes, and the rate_limit_event
@@ -153,12 +153,14 @@ function postHook() {
 
 // Runs claude and copies its output through. `argv` is claude's path and its arguments.
 function run(argv) {
-  const [claude, ...args] = argv;
+  const [claude, ...rest] = argv;
   const settings = process.env.WORKTABS_CLAUDE_SETTINGS;
-  // A subcommand (the extension runs "auth status --json" to check the sign-in) rejects
-  // --settings after it, and starts no session for the hooks anyway.
-  const session = args.length === 0 || args[0].startsWith('-');
-  if (settings && session) args.push('--settings', settings);
+  // --settings goes before the extension's arguments. claude takes it there as an option of its
+  // own, also in front of a subcommand, and rejects it after one: the extension runs
+  // "auth status --json" to check the sign-in, and "--setting-sources user workspace-trust --json"
+  // to ask whether the folder is trusted. Telling a session from a subcommand by its first
+  // argument failed on the latter. A subcommand starts no session, so the hooks do not run there.
+  const args = settings ? ['--settings', settings, ...rest] : rest;
   const procId = String(process.pid);
   /** @type {NodeJS.ProcessEnv} */
   const env = { ...process.env, WORKTABS_PROC_ID: procId };

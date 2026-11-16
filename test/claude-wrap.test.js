@@ -46,7 +46,7 @@ test('claude-wrap.exe passes claude\'s output through as it comes, and posts the
 // The stand-in for claude as one program (see settingsCases). Writes each argument on a line.
 const ARGS_CHILD = 'static class ArgsChild { static void Main(string[] args) { foreach (string arg in args) System.Console.Write(arg + "\\n"); } }';
 
-test('claude-wrap.exe adds the app\'s settings to a session, and leaves a subcommand as it is', { skip, timeout: 60000 }, async (t) => {
+test('claude-wrap.exe puts the app\'s settings before claude\'s arguments, so a subcommand takes them too', { skip, timeout: 60000 }, async (t) => {
   const dir = tempDir(t);
   const exe = buildWrapper(dir);
   const source = path.join(dir, 'args-child.cs');

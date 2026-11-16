@@ -72,7 +72,7 @@ test('the wrapper passes claude\'s output through as it comes, and posts the rat
   assert.deepEqual(hooks, []);
 });
 
-test('the wrapper adds the app\'s settings to a session, and names itself in claude\'s environment', { skip, timeout: 30000 }, async (t) => {
+test('the wrapper puts the app\'s settings before claude\'s arguments, and names itself in claude\'s environment', { skip, timeout: 30000 }, async (t) => {
   const dir = tempDir(t);
   const wrapper = installWrapper({ dir, exe: process.execPath });
   const child = writeArgsChild(dir);
