@@ -54,7 +54,7 @@ Detailed comparisons and the design decisions are in [docs/research.md](docs/res
 
 ## Features
 
-- The sidebar shows a tree of repositories → worktrees → conversations. Clicking a worktree opens its VS Code as a tab.
+- The sidebar shows a tree of owners → repositories → worktrees → conversations. Clicking a worktree opens its VS Code as a tab.
 - Each conversation has a badge for working, waiting for approval, or done, and how long it has been in that state. When a conversation in a background tab waits for approval or finishes, an OS notification appears.
 - Add and remove worktrees from the sidebar. Files listed in `.worktreeinclude` (such as `.env`) are copied.
 - Create a worktree from a GitHub issue or a short task: your selected agent suggests the branch name, and the instruction becomes an editable draft in a new conversation. From a PR number, it checks out the PR branch into a worktree for review. Worktabs does not send the task automatically.
