@@ -91,38 +91,54 @@ function watchCodexApproval(preference, snapshotOf, apply, environment) {
   const now = environment.now || Date.now;
   const previous = environment.worktabsCodexApproval;
   previous?.dispose();
-  let timer = null, busy = false, stopped = false, active = null, conversationId;
-  let deadline = 0, handled = false, selected = false, selectedPreference = null, touchedBeforeSetup = false;
+  let timer = null, busy = false, stopped = false, active = null, conversationId, hostId;
+  let deadline = 0, handled = false, selected = false, selectedPreference = null, interaction = null;
   const state = { preference, result: /** @type {CodexApprovalResult} */ ({ reason: 'loading' }), dispose,
     setPreference(value) { preference = value; state.preference = value; } };
   environment.worktabsCodexApproval = state;
   const schedule = () => {
     if (!stopped && timer === null) timer = setTimeout(check, 100);
   };
+  const visible = (element) => element.isConnected !== false &&
+    element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true });
+  const visibleTrigger = () => {
+    const triggers = [...document.querySelectorAll('[data-composer-navigation-target="permissions"]')].filter(visible);
+    // Retained hidden chats are not candidates, and two visible pickers are ambiguous.
+    return triggers.length === 1 ? triggers[0] : null;
+  };
+  const read = (trigger) => {
+    try { return snapshotOf(trigger); } catch { return null; }
+  };
+  const sameContext = (a, b) => a && b ? a.conversationId === b.conversationId && a.hostId === b.hostId : a === b;
   const touched = (event) => {
     if (!event.isTrusted) return;
-    // An explicit interaction takes precedence, including typing before setup finishes.
+    const trigger = visibleTrigger();
+    if (!trigger || !trigger.contains(event.target)) return;
+    if (event.type === 'keydown' && !['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
+    // Opening the permission picker is an explicit choice. Typing in the chat is not.
+    interaction = { trigger, snapshot: read(trigger) };
     handled = true;
-    if (!active) touchedBeforeSetup = true;
     state.result = { reason: 'user-choice' };
   };
   async function check() {
     timer = null;
     if (stopped || busy) return;
-    const trigger = document.querySelector('[data-composer-navigation-target="permissions"]');
+    const trigger = visibleTrigger();
     if (!trigger) return;
-    let snapshot;
-    try { snapshot = snapshotOf(trigger); } catch { snapshot = null; }
+    const snapshot = read(trigger);
+    const retainedSwitch = active && active !== trigger && active.isConnected !== false && !visible(active);
     // Layout changes can replace the button without starting another conversation. Keep an
     // explicit choice across that replacement; only a thread transition resets setup.
-    if (!active || (snapshot && conversationId !== snapshot.conversationId)) {
-      const first = !active;
-      active = trigger;
+    if (!active || retainedSwitch || (snapshot && (conversationId !== snapshot.conversationId || hostId !== snapshot.hostId))) {
       conversationId = snapshot?.conversationId;
+      hostId = snapshot?.hostId;
       deadline = now() + 10000;
-      handled = first && touchedBeforeSetup;
+      handled = Boolean(interaction && (interaction.trigger === trigger || !retainedSwitch) &&
+        (interaction.snapshot && snapshot ? sameContext(interaction.snapshot, snapshot) : interaction.trigger === trigger));
+      if (handled && !interaction.snapshot) interaction.snapshot = snapshot;
       selected = false;
     }
+    active = trigger;
     if (handled) return;
     if (selected) {
       if (snapshot?.current === selectedPreference) state.result = { mode: selectedPreference };
@@ -135,6 +151,8 @@ function watchCodexApproval(preference, snapshotOf, apply, environment) {
     try {
       const result = await apply(snapshot, preference);
       if (stopped || handled) return;
+      // A selection can finish after another retained composer becomes visible.
+      if (visibleTrigger() !== trigger || !sameContext(read(trigger), snapshot)) { schedule(); return; }
       state.result = result;
       if (state.result.reason === 'loading' && now() < deadline) schedule();
       else if (state.result.reason === 'loading') {

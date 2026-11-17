@@ -11,7 +11,8 @@ const label = (mode) => element({ id: `composer.permissionsDropdown.${mode === '
 // supplies guarded onClick callbacks; the profile picker supplies semantic selections.
 function picker({ mode = 'manual', supported = true, restricted = false, profile = false,
   conversationId = null, hostId = 'local', select = () => {}, loading = false } = {}) {
-  const trigger = { disabled: loading };
+  const trigger = { disabled: loading, visible: true, isConnected: true,
+    checkVisibility() { return this.visible; }, contains(target) { return target === this || target?.parent === this; } };
   const selection = (value) => ({ kind: 'agent-mode', agentMode: ({ manual: 'auto', 'auto-review': 'guardian-approvals' })[value] || value });
   const children = ['manual', ...(supported ? ['auto-review'] : [])].map((value) => profile
     ? element({ selection: { permissionSelection: selection(value), disabledReason: restricted && value === 'auto-review' ? 'disabled-by-requirements' : null },
@@ -73,7 +74,7 @@ function environment(trigger) {
   const timers = [], listeners = new Map();
   let mutate;
   const env = {
-    document: { documentElement: {}, querySelector: () => env.trigger,
+    document: { documentElement: {}, querySelectorAll: () => env.triggers || (env.trigger ? [env.trigger] : []),
       addEventListener: (name, listener) => listeners.set(name, listener),
       removeEventListener: (name) => listeners.delete(name) },
     MutationObserver: class { constructor(callback) { mutate = callback; } observe() {} disconnect() {} },
@@ -112,12 +113,103 @@ test('selection is confirmed, applied once, and preserves later choices across m
   assert.deepEqual(fixture.env.worktabsCodexApproval.result, { mode: 'manual' });
 });
 
-test('typing before initial setup preserves the explicit interaction', async () => {
+test('typing or clicking outside permissions before setup does not cancel the default', async () => {
   const fixture = environment(picker());
-  watchCodexApproval('auto-review', pickerSnapshot, () => assert.fail('user already interacted'), fixture.env);
-  fixture.listeners.get('keydown')({ isTrusted: true });
+  watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+  fixture.listeners.get('keydown')({ type: 'keydown', isTrusted: true, key: 'a', target: {} });
+  fixture.listeners.get('pointerdown')({ type: 'pointerdown', isTrusted: true, target: {} });
+  await fixture.tick();
+  assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'selected');
+});
+
+test('only the unique visible composer receives the default, even after a hidden history picker', async () => {
+  const hidden = picker({ conversationId: 'history', select: () => assert.fail('hidden picker') });
+  hidden.visible = false;
+  const calls = [];
+  const current = picker({ select: (value) => calls.push(value) });
+  const fixture = environment(current);
+  fixture.env.triggers = [hidden, current];
+  watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+  await fixture.tick();
+  assert.deepEqual(calls, ['auto-review']);
+});
+
+test('hidden, detached and ambiguous composers wait until exactly one is visible', async () => {
+  for (const state of ['hidden', 'detached', 'ambiguous']) {
+    let calls = 0;
+    const current = picker({ select: () => calls++ });
+    const fixture = environment(current);
+    if (state === 'hidden') current.visible = false;
+    if (state === 'detached') current.isConnected = false;
+    if (state === 'ambiguous') fixture.env.triggers = [current, picker()];
+    watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+    await fixture.tick();
+    assert.equal(calls, 0, state);
+    current.visible = true; current.isConnected = true; fixture.env.triggers = [current];
+    fixture.mutate(); await fixture.tick();
+    assert.equal(calls, 1, state);
+  }
+});
+
+test('permission activation before setup preserves the choice, but tabbing and untrusted input do not', async () => {
+  for (const [type, key, trusted, expected] of [
+    ['pointerdown', undefined, true, 'user-choice'], ['keydown', 'Enter', true, 'user-choice'],
+    ['keydown', ' ', true, 'user-choice'], ['keydown', 'ArrowDown', true, 'user-choice'],
+    ['keydown', 'Tab', true, 'selected'], ['pointerdown', undefined, false, 'selected'],
+  ]) {
+    const fixture = environment(picker());
+    watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+    fixture.listeners.get(type)({ type, key, isTrusted: trusted, target: { parent: fixture.env.trigger } });
+    await fixture.tick();
+    assert.equal(fixture.env.worktabsCodexApproval.result.reason, expected, `${type}: ${key}`);
+  }
+});
+
+test('a retained new-chat composer does not consume initialization for another new chat', async () => {
+  const first = picker();
+  const nextCalls = [];
+  const next = picker({ select: (mode) => nextCalls.push(mode) });
+  next.visible = false;
+  const fixture = environment(first);
+  fixture.env.triggers = [first, next];
+  watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+  fixture.listeners.get('pointerdown')({ type: 'pointerdown', isTrusted: true, target: first });
   await fixture.tick();
   assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'user-choice');
+  first.visible = false; next.visible = true;
+  fixture.mutate(); await fixture.tick();
+  assert.deepEqual(nextCalls, ['auto-review']);
+});
+
+test('a choice in the newly visible composer is preserved before its first observer check', async () => {
+  const old = picker({ conversationId: 'history' });
+  const next = picker({ select: () => assert.fail('user opened permissions') });
+  next.visible = false;
+  const fixture = environment(old);
+  fixture.env.triggers = [old, next];
+  watchCodexApproval('auto-review', pickerSnapshot, applyCodexApproval, fixture.env);
+  await fixture.tick();
+  old.visible = false; next.visible = true;
+  fixture.listeners.get('pointerdown')({ type: 'pointerdown', isTrusted: true, target: next });
+  fixture.mutate(); await fixture.tick();
+  assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'user-choice');
+});
+
+test('an asynchronous result from a hidden composer cannot finish initialization in a different chat', async () => {
+  const old = picker();
+  const next = picker({ conversationId: 'history' });
+  next.visible = false;
+  let finish;
+  const fixture = environment(old);
+  fixture.env.triggers = [old, next];
+  watchCodexApproval('auto-review', pickerSnapshot, (snapshot, preference) => snapshot.conversationId === null
+    ? new Promise((resolve) => { finish = resolve; }) : applyCodexApproval(snapshot, preference), fixture.env);
+  const pending = fixture.tick();
+  old.visible = false; next.visible = true;
+  fixture.mutate(); await fixture.tick();
+  finish({ reason: 'selected' }); await pending;
+  await fixture.tick();
+  assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'existing-conversation');
 });
 
 test('a selection callback that does not change the picker is never reported as effective', async () => {
@@ -177,7 +269,7 @@ test('disposal and trusted choices during asynchronous selection preserve watche
     const previous = fixture.env.worktabsCodexApproval; const tick = fixture.tick();
     if (action === 'dispose') previous.dispose();
     else if (action === 'reinject') watchCodexApproval('manual', pickerSnapshot, applyCodexApproval, fixture.env);
-    else fixture.listeners.get('keydown')({ isTrusted: true });
+    else fixture.listeners.get('keydown')({ type: 'keydown', isTrusted: true, key: 'Enter', target: fixture.env.trigger });
     resolve({ reason: 'selected' }); await tick;
     assert.equal(previous.result.reason, action === 'user' ? 'user-choice' : 'loading');
     if (action === 'reinject') assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'loading');
