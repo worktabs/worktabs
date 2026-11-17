@@ -15,7 +15,7 @@ Claude Code と Codex の会話をひとつの窓に集め、git worktree ごと
 
 [動いているところは 40 秒の動画で（YouTube）](https://youtu.be/mR1Rff7QtwY)
 
-git worktree ごとにブラウザ版 VS Code（code-server）を起動し、左のサイドバーで切り替えるアプリです。各タブでは、選んだエージェントの拡張とそのチャット欄をそのまま使います。Claude Code は既定で入ります。Codex は、対応する拡張をインポートすると使えます。どの会話が作業中か、自分の返事を待っているかは、サイドバーのバッジと OS の通知でわかります。Windows と macOS で動きます。
+git worktree ごとにブラウザ版 VS Code（code-server）を起動し、左のサイドバーで切り替えるアプリです。各タブでは、選んだエージェントの拡張とそのチャット欄をそのまま使います。Claude Code は既定で入り、Codex は有効にすると Open VSX から入ります。どの会話が作業中か、自分の返事を待っているかは、サイドバーのバッジと OS の通知でわかります。Windows と macOS で動きます。
 
 ## 誰のためのものか
 
@@ -47,14 +47,14 @@ AI エージェントを使うようになって、いくつものリポジト�
 ### 割り切り
 
 - 独自のチャット欄やエディタは作りません。code-server と Claude Code 拡張をそのまま使います。
-- 各タブは code-server で、デスクトップ版の VS Code ではありません。設定と拡張はデスクトップ版とは別です。Claude は既定で Open VSX から入れます。対応していて利用が許されている拡張は、デスクトップ版の VS Code や VSIX からインポートすることもできます（[拡張の管理](docs/ja/extensions.md)）。
+- 各タブは code-server で、デスクトップ版の VS Code ではありません。設定と拡張はデスクトップ版とは別です。Claude と Codex は既定で Open VSX から入れます。対応していて利用が許されている拡張は、デスクトップ版の VS Code や VSIX からインポートすることもできます（[拡張の管理](docs/ja/extensions.md)）。
 - worktree は、`git worktree` や Orca など、ほかの方法で作ったものもそのまま開けます。
 - メモリは、タブ 1 つで約 0.8 GB 使います。その代わりに VS Code のフル機能が使えます。
-- Windows と macOS で動きます。Claude Code は既定で入ります。Codex は、対応していて利用が許されている拡張をインポートすると使えます。WSL のタブは Windows だけです。
+- Windows と macOS で動きます。Claude Code は既定で入ります。Codex は有効にすると Open VSX から入り、デスクトップ版の VS Code や VSIX からのインポートもできます。WSL のタブは Windows だけです。
 
 ## できること
 
-- サイドバーに、リポジトリ → worktree → 会話のツリーを出します。worktree をクリックすると、その VS Code をタブとして開きます。
+- サイドバーに、owner → リポジトリ → worktree → 会話のツリーを出します。worktree をクリックすると、その VS Code をタブとして開きます。
 - 会話ごとに、作業中・承認待ち・完了をバッジで出し、その状態になってからの時間（「12 分」「5 分前」）も出します。裏のタブの会話が承認待ちか完了になると、OS の通知が出ます。
 - サイドバーから worktree を追加・削除できます。`.worktreeinclude` に書いた `.env` などもコピーします。
 - GitHub の issue ややることから worktree を作ると、選んだエージェントがブランチ名を考え、新しい会話の入力欄に指示を下書きとして入れておきます。PR の番号からは、その PR のブランチを取り出したレビュー用の worktree を作れます。指示を Worktabs が自動で送ることはありません。
@@ -67,7 +67,7 @@ AI エージェントを使うようになって、いくつものリポジト�
 
 画面は英語か日本語で、システムの言語に合わせます（設定の `locale`）。
 
-Codex を使うには、「設定 > 拡張」でその拡張をインポートし、「設定 > 一般」で有効にして、チャット欄からサインインします。両方のエージェントを同時に有効にでき、新しいタブは既定のエージェントで開き、既存の会話はそれぞれのエージェントのままです。設定のしかたと、実際の拡張での確認がまだの環境は、[エージェントの設定](docs/ja/config.md)と [Codex の検証の表](docs/ja/codex-verification.md)にあります。
+Codex を使うには、「設定 > 一般」で有効にします。Worktabs が Open VSX から拡張を取得し（サイドバーの更新カードにダウンロードが出ます）、準備ができると Codex のタブが開きます。その後、チャット欄からサインインします。Open VSX の版が古かったり、その版で起動しなかったりするときは、「設定 > 拡張」でデスクトップ版の VS Code や VSIX から Codex をインポートできます。両方のエージェントを同時に有効にでき、新しいタブは既定のエージェントで開き、既存の会話はそれぞれのエージェントのままです。設定のしかたと、実際の拡張での確認がまだの環境は、[エージェントの設定](docs/ja/config.md)と [Codex の検証の表](docs/ja/codex-verification.md)にあります。
 
 ウィンドウの地図と、それぞれの部分でできることは [docs/ja/features.md](docs/ja/features.md) にあります。
 
@@ -141,9 +141,9 @@ code-server と拡張は、初回の起動時に自動で取得します（約 3
 初回の起動時に、次のものを取得して動かします。
 
 - [code-server](https://github.com/coder/code-server)（GitHub のリリースから）
-- [Claude Code 拡張](https://open-vsx.org/extension/Anthropic/claude-code)と、VS Code を英語以外で表示するときはその言語パック（[Open VSX](https://open-vsx.org/) から）
+- [Claude Code 拡張](https://open-vsx.org/extension/Anthropic/claude-code)、Codex を有効にしたときは [Codex 拡張](https://open-vsx.org/extension/openai/chatgpt)と Codex Audio、VS Code を英語以外で表示するときはその言語パック（[Open VSX](https://open-vsx.org/) から）
 
-Claude Code を使うには、自分の Claude のアカウントが要り、Anthropic の規約に従います。Codex の拡張は Worktabs が取得するのではなく、自分でインポートします（[拡張の管理](docs/ja/extensions.md)）。Codex を使うときは OpenAI の規約に従います。
+Claude Code を使うには、自分の Claude のアカウントが要り、Anthropic の規約に従います。Codex を有効にすると、自分でインポートしていない限り、Worktabs が Open VSX から拡張を取得します（[拡張の管理](docs/ja/extensions.md)）。Codex を使うには、自分の OpenAI のアカウントが要り、OpenAI の規約に従います。
 
 Worktabs は独立したプロジェクトで、Anthropic や OpenAI とは関係がなく、両社が認めたり支援したりしているものではありません。Claude と Claude Code は Anthropic の商標です。OpenAI と Codex は OpenAI の商標です。
 
@@ -175,3 +175,5 @@ Worktabs は独立したプロジェクトで、Anthropic や OpenAI とは関�
 [MIT](LICENSE)。インストーラーと zip に入る第三者のソフトウェアと、Worktabs が実行時に取得するものは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（英語）にまとめています。
 
 Claude Code 拡張は Worktabs に同梱していません。Open VSX から取得し、Anthropic のライセンスに従います。使うには利用者自身の Claude のアカウントが要り、Anthropic の利用規約に従う必要があります。
+
+Codex 拡張も Worktabs に同梱していません。Codex を有効にすると、OpenAI が Open VSX に公開した拡張を取得します。そのライセンスは [OpenAI の利用規約](https://openai.com/policies/row-terms-of-use)を参照しています。

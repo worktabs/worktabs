@@ -11,7 +11,7 @@ Some of what this page lists shows only when you hover over a row, in a dialog, 
 | | Part | What it is |
 | --- | --- | --- |
 | 1 | [Top of the sidebar](#1-top-of-the-sidebar) | The counts of conversations that need you, and the buttons for the whole app |
-| 2 | [Repository tree](#2-repository-tree) | Repositories → worktrees → Claude Code and Codex conversations, with their states, PRs, and CI |
+| 2 | [Repository tree](#2-repository-tree) | Owners → repositories → worktrees → Claude Code and Codex conversations, with their states, PRs, and CI |
 | 3 | [Subscription usage](#3-subscription-usage) | How much of your Claude and Codex limits you have used |
 | 4 | [VS Code of the selected worktree](#4-vs-code-of-the-selected-worktree) | VS Code itself, in a tab, for the worktree you picked |
 | 5 | [Agent chat panel](#5-agent-chat-panel) | The Claude Code or Codex extension, in the right sidebar of that VS Code |
@@ -30,9 +30,11 @@ More: [usage.md, "Top bar"](usage.md#top-bar), ["Filter"](usage.md#filter), and 
 
 ## 2. Repository tree
 
-![The sidebar tree: api-server and web-app under "Open repositories", with their worktrees and the Claude Code and Codex conversations of the open ones; docs-site and mobile-app, with a lock, under "Other repositories"; "Repositories not cloned" folded with 3](images/features/sidebar-tree.png)
+<img src="images/features/sidebar-tree.png" width="420" alt="The sidebar tree grouped by owner in both sections: alex and acme under Open repositories, with api-server and web-app (WSL) together under acme; alex, acme, and the collapsed example-labs under Other repositories; Repositories not cloned folded with 3">
 
 "Open repositories" lists the repositories with open tabs. "Other repositories" lists the rest, from `ghq list` and the ones you added. Both put the repositories under a row for their owner, your own accounts first. "Repositories not cloned" lists your GitHub repositories that are not on this computer yet ([below](#repositories-not-cloned)).
+
+In this example, `acme` has `api-server` on Windows and `web-app` in WSL under the same owner row. `example-labs` is collapsed in "Other repositories". Click an owner row to collapse or expand it; each section remembers its own state.
 
 - Click a worktree to open it as a tab, or to switch to its tab if it is open.
 - Add a worktree with "＋" on a repository row, from a GitHub issue or PR, or from a sentence that says what to do. Remove one with the trash button on its row ([worktrees.md](worktrees.md)).
