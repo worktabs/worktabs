@@ -135,7 +135,8 @@ function watchCodexApproval(preference, snapshotOf, apply, environment) {
       deadline = now() + 10000;
       handled = Boolean(interaction && (interaction.trigger === trigger || !retainedSwitch) &&
         (interaction.snapshot && snapshot ? sameContext(interaction.snapshot, snapshot) : interaction.trigger === trigger));
-      if (handled && !interaction.snapshot) interaction.snapshot = snapshot;
+      // Consume the interaction once its context is known. A later new chat can reuse null.
+      if (snapshot) interaction = null;
       selected = false;
     }
     active = trigger;

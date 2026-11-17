@@ -195,6 +195,29 @@ test('a choice in the newly visible composer is preserved before its first obser
   assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'user-choice');
 });
 
+test('permission interactions expire on leaving a conversation, even when its null ID is reused', async () => {
+  for (const replace of [false, true]) {
+    const trigger = picker();
+    let snapshot = pickerSnapshot(trigger);
+    let calls = 0;
+    snapshot.options['auto-review'].select = () => { calls++; };
+    const fixture = environment(trigger);
+    watchCodexApproval('auto-review', () => snapshot, applyCodexApproval, fixture.env);
+    fixture.listeners.get('pointerdown')({ type: 'pointerdown', isTrusted: true, target: trigger });
+    await fixture.tick();
+    snapshot = { ...snapshot, conversationId: 'saved-thread' };
+    fixture.mutate(); await fixture.tick();
+    assert.equal(fixture.env.worktabsCodexApproval.result.reason, 'existing-conversation');
+    if (replace) {
+      fixture.env.trigger.isConnected = false;
+      fixture.env.trigger = picker();
+    }
+    snapshot = { ...snapshot, conversationId: null };
+    fixture.mutate(); await fixture.tick();
+    assert.equal(calls, 1, `replaced: ${replace}`);
+  }
+});
+
 test('an asynchronous result from a hidden composer cannot finish initialization in a different chat', async () => {
   const old = picker();
   const next = picker({ conversationId: 'history' });
