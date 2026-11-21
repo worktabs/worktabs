@@ -503,6 +503,7 @@ function createWslServers(distro) {
     hooks,
     locale: config.resolvedLocale,
     managedSettings: managedSettings(),
+    log: logUpdate,
   });
   manager.on('exit', onServerExit);
   // Hooks and the helper extension's requests from the distribution, through its agent.

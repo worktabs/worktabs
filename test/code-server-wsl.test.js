@@ -12,23 +12,28 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 // A distribution whose code-server installs extensions as the real one does: it extracts into a
 // temporary folder and renames it into place, so a second install of an extension still being
-// installed fails with ENOTEMPTY (#69). `fail(spec)` makes an install fail otherwise.
-function distro(t, { windows = [], extensions = ['acme.one'], unpinnedExtensions, fail = () => false } = {}) {
+// installed fails with ENOTEMPTY (#69). `have`: what it has installed already. `latest`: the
+// version an install without one takes (else 1.0.0). `fail(spec)` makes an install fail otherwise.
+function distro(t, { windows = [], extensions = ['acme.one'], unpinnedExtensions, have = [], latest = {}, fail = () => false } = {}) {
   const windowsDir = tempDir(t);
   if (windows.length) fs.writeFileSync(path.join(windowsDir, 'extensions.json'), JSON.stringify(windows.map(([id, version]) => ({ identifier: { id }, version }))));
-  const installed = new Map();
+  const installed = new Map(have);
+  const files = new Map();
+  const logs = [];
   const busy = new Set();
   const events = [];
   let running = 0;
   let most = 0;
   const wsl = new EventEmitter();
-  wsl.readFile = async () => {
+  wsl.readFile = async (file) => {
+    if (!file.endsWith('/extensions/extensions.json')) return files.get(file) ?? null;
     events.push(`read ${[...installed.keys()].join(' ')}`.trim());
     return JSON.stringify([...installed].map(([id, version]) => ({ identifier: { id }, version })));
   };
+  wsl.writeFile = async (file, text) => { files.set(file, String(text)); };
   wsl.exec = async (command, args) => {
     const spec = args[args.indexOf('--install-extension') + 1];
-    const [id, version = '1.0.0'] = spec.split('@');
+    const [id, version = latest[spec] || '1.0.0'] = spec.split('@');
     events.push(`install ${spec}`);
     const raced = busy.has(id);
     busy.add(id);
@@ -41,14 +46,19 @@ function distro(t, { windows = [], extensions = ['acme.one'], unpinnedExtensions
     installed.set(id, version);
   };
   const manager = new WslCodeServerManager({ distro: 'Ubuntu', dataDir: windowsDir, hooks: { token: 'hook-token' }, wsl,
-    extensions, unpinnedExtensions, windowsExtensionsDir: windowsDir });
+    extensions, unpinnedExtensions, windowsExtensionsDir: windowsDir, log: (line) => logs.push(line) });
   manager.home = '/home/me';
   manager.arch = 'amd64';
   manager.codeServerDir = '/server';
-  manager.prepare = async () => true;
+  // As the real one does, preparing reads the distribution's $HOME.
+  manager.prepare = async () => { manager.home = '/home/me'; return true; };
   manager.launch = async () => ({ port: 4300 });
-  return { manager, installed, events, installs: () => events.filter((event) => event.startsWith('install ')), most: () => most };
+  return { manager, installed, files, logs, events, installs: () => events.filter((event) => event.startsWith('install ')), most: () => most };
 }
+
+const CLAUDE = 'anthropic.claude-code';
+// A distribution with Claude Code unpinned, as main.js makes it.
+const claudeDistro = (t, options) => distro(t, { extensions: [CLAUDE], unpinnedExtensions: [CLAUDE], ...options });
 
 test('vsixIdentity reads the id and version from a VSIX named <id>-<version>.vsix', () => {
   assert.deepEqual(vsixIdentity('C:\\app\\native\\worktabs.worktabs-helper-0.5.0.vsix'), { id: 'worktabs.worktabs-helper', version: '0.5.0' });
@@ -157,4 +167,61 @@ test('an update syncs the WSL extensions after a starting tab has, and still rep
     'read acme.one anthropic.claude-code', 'install anthropic.claude-code',
   ]);
   assert.equal(f.most(), 1);
+});
+
+test('a WSL tab start takes the latest Claude Code when an update skipped the distribution (#88)', async (t) => {
+  const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], have: [[CLAUDE, '2.1.319']], latest: { [CLAUDE]: '2.1.327' } });
+  // The update ran while no tab of the distribution had started in this run.
+  f.manager.home = null;
+  await f.manager.applyUpdate(() => {});
+  assert.deepEqual(f.installs(), []);
+  await f.manager.start('a', FOLDER);
+  assert.deepEqual(f.installs(), [`install ${CLAUDE}`]);
+  assert.equal(f.installed.get(CLAUDE), '2.1.327');
+  assert.deepEqual(JSON.parse(f.files.get('/home/me/.worktabs/unpinned-extensions.json')), { [CLAUDE]: '2.1.327' });
+  // Up to date now: the next start does not take it again.
+  await f.manager.start('b', FOLDER);
+  assert.deepEqual(f.installs(), [`install ${CLAUDE}`]);
+});
+
+test('a WSL tab start leaves a Claude Code as new as the Windows tabs\' alone', async (t) => {
+  for (const have of ['2.1.327', '2.1.330']) {
+    const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], have: [[CLAUDE, have]] });
+    await f.manager.start('a', FOLDER);
+    assert.deepEqual(f.installs(), [], have);
+  }
+});
+
+test('a WSL tab start takes the latest Claude Code once for each Windows version, even when it is older', async (t) => {
+  const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], have: [[CLAUDE, '2.1.319']], latest: { [CLAUDE]: '2.1.325' } });
+  await f.manager.start('a', FOLDER);
+  // Open VSX has nothing newer for Linux yet: the next starts do not install it again and again.
+  await f.manager.start('b', FOLDER);
+  assert.deepEqual(f.installs(), [`install ${CLAUDE}`]);
+  assert.equal(f.installed.get(CLAUDE), '2.1.325');
+});
+
+test('a WSL tab start leaves an older Claude Code alone while a tab of the distribution runs', async (t) => {
+  const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], have: [[CLAUDE, '2.1.319']], latest: { [CLAUDE]: '2.1.327' } });
+  f.manager.instances.set('running', /** @type {any} */ ({}));
+  await f.manager.start('a', FOLDER);
+  assert.deepEqual(f.installs(), []);
+  f.manager.instances.clear();
+  await f.manager.start('b', FOLDER);
+  assert.deepEqual(f.installs(), [`install ${CLAUDE}`]);
+});
+
+test('a WSL tab starts with its Claude Code when taking a newer one fails, and the next start tries again', async (t) => {
+  let failures = 1;
+  const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], have: [[CLAUDE, '2.1.319']], latest: { [CLAUDE]: '2.1.327' }, fail: () => failures-- > 0 });
+  assert.deepEqual(await f.manager.start('a', FOLDER), { port: 4300 });
+  assert.equal(f.installed.get(CLAUDE), '2.1.319');
+  assert.match(f.logs[0], /^WSL Ubuntu: anthropic\.claude-code not updated: anthropic\.claude-code: Error: anthropic\.claude-code is not reachable/);
+  await f.manager.start('b', FOLDER);
+  assert.equal(f.installed.get(CLAUDE), '2.1.327');
+});
+
+test('a missing Claude Code still stops the WSL tab when it cannot be installed', async (t) => {
+  const f = claudeDistro(t, { windows: [[CLAUDE, '2.1.327']], fail: () => true });
+  await assert.rejects(f.manager.start('a', FOLDER), /anthropic\.claude-code is not reachable/);
 });
