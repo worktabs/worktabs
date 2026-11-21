@@ -3,6 +3,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const { closeTabPage, createTabViews } = require('../src/tabs/tab-view');
 const { CHAT_FOCUS_GUARD, WEBVIEW_FRAME, pageFocusScript } = require('../src/conversations/chat-frames');
+const { CHAT_IME_RESYNC } = require('../src/conversations/chat-ime');
 const { codexApprovalScript } = require('../src/codex/codex-approval');
 const { codexOnboardingScript } = require('../src/agents/agent-onboarding');
 
@@ -81,7 +82,7 @@ test('a Claude chat frame gets the focus guard, and the main frame nothing', () 
   contents.emit('did-frame-finish-load', {}, false, 1, 2);
   // The chat that loaded is read for the conversation it shows.
   assert.deepEqual(calls, [['frame', 1, 2], ['input', 't1']]);
-  assert.deepEqual(scripts, [pageFocusScript(false), CHAT_FOCUS_GUARD]);
+  assert.deepEqual(scripts, [pageFocusScript(false), CHAT_FOCUS_GUARD, CHAT_IME_RESYNC]);
 });
 
 test('the Claude chats are told when the page gets and loses the focus, which they cannot read from their own site', () => {
@@ -100,18 +101,18 @@ test('the Claude chats are told when the page gets and loses the focus, which th
   assert.doesNotThrow(() => contents.emit('focus'));
 });
 
-test('a Codex chat frame gets the approval mode, and in a linked worktree the onboarding too', () => {
+test('a Codex chat frame gets the approval mode and the IME resync, and in a linked worktree the onboarding too', () => {
   const scripts = [];
   const { createTabView, contents } = setup({ frame: chatFrame('openai.chatgpt', scripts) });
   createTabView({ id: 't1' });
   contents.emit('did-frame-finish-load', {}, false, 1, 2);
-  assert.deepEqual(scripts, [codexApprovalScript('manual')]);
+  assert.deepEqual(scripts, [codexApprovalScript('manual'), CHAT_IME_RESYNC]);
 
   const linked = [];
   const worktree = setup({ frame: chatFrame('openai.chatgpt', linked) });
   worktree.createTabView({ id: 't2', linkedWorktree: true });
   worktree.contents.emit('did-frame-finish-load', {}, false, 1, 2);
-  assert.deepEqual(linked, [codexOnboardingScript(), codexApprovalScript('manual')]);
+  assert.deepEqual(linked, [codexOnboardingScript(), codexApprovalScript('manual'), CHAT_IME_RESYNC]);
 });
 
 test('a page process that ends shows on its open tab only', () => {
