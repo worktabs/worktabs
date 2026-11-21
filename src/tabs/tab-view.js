@@ -4,6 +4,7 @@
 const { t } = require('../i18n');
 const { unproxiedUrl } = require('../code-server/code-server');
 const { CHAT_FOCUS_GUARD, chatAgent, isClaudeChatFrame, isCodexChatFrame, pageFocusScript } = require('../conversations/chat-frames');
+const { CHAT_IME_RESYNC } = require('../conversations/chat-ime');
 const { codexApprovalScript } = require('../codex/codex-approval');
 const { codexOnboardingScript } = require('../agents/agent-onboarding');
 
@@ -71,6 +72,7 @@ function createTabViews({ makeView, frameOf, folderFromUrl, openTab, openExterna
       }
       const agent = frame && chatAgent(frame);
       if (agent) {
+        frame.executeJavaScript(CHAT_IME_RESYNC).catch(() => {});
         chatLoaded(tab, agent);
         input(tab);
       }

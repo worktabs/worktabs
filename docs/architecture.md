@@ -500,6 +500,15 @@ When the Claude Code chat panel gets focus, it moves focus to its input box a li
 - While you type in one chat panel, focus does not move to another chat panel even if it shows an approval prompt or similar.
 - A chat panel served from a site of its own ([below](#webviews-on-sites-of-their-own)) cannot ask the page whether it has the focus. So the app tells each Claude chat panel when it loads, and again each time the tab's page gets or loses the focus (`pageFocusScript` in `src/conversations/chat-frames.js`).
 
+## IME in the chats
+
+With Electron 45 (Chromium 156), the IME could stop working in a chat's input box: ordinary keys typed, but the IME-on key (Kana on macOS, Convert mapped to IME On on Windows) did nothing. Clicking the input box or typing did not bring it back; focusing another field and coming back did.
+
+- The chats run in frames on sites of their own ([below](#webviews-on-sites-of-their-own)). Chromium 156 stores the input state of a field in such a frame without handing the field to the IME when the state arrives while the browser does not count the frame as focused (Chromium `cfa51540e4`). Later updates of the same field, with the same type and flags, are not changes to it, so the IME stays off until the focus moves to another field.
+- Chromium fixed this in `d4c2706438` and `0250f19391`. Electron 45 does not have them; Electron 46 (Chromium 160) does.
+- Until then, each chat frame gets a script as it loads (`src/conversations/chat-ime.js`). A moment after the frame or one of its fields gets the focus, and when an IME key reaches the page instead of the IME, it flips the `autocomplete` attribute of the field in focus for one frame. Chromium sends the field's state again for the flip and for the flip back, each with other flags, so the browser hands the field to the IME. The focus, the text, and the selection stay as they are. It does nothing during a composition.
+- Remove it once the app runs an Electron with both fixes ([#90](https://github.com/worktabs/worktabs/issues/90)).
+
 ## Webviews on sites of their own
 
 code-server serves the webviews (the Claude Code and Codex chats, and every other extension's) from the workbench's own origin. Chromium then runs them in the workbench's renderer process, on its main thread, so a webview that keeps that thread busy stops the whole VS Code in the tab. Desktop VS Code loads webviews from `vscode-webview://`, and vscode.dev from `https://<hash>.vscode-cdn.net`. Both are other sites, so each webview gets a process of its own.
