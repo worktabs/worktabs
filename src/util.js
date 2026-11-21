@@ -1,6 +1,7 @@
 // Small helpers that several modules share. Testable without Electron.
 // wsl-agent.js keeps its own copies: it is written into WSL and runs there by itself.
 const path = require('path');
+const { Transform } = require('stream');
 
 // Resolves after `ms` milliseconds.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,14 +43,14 @@ async function mapLimit(items, limit, fn) {
   return results;
 }
 
-// An onProgress(mb, totalMb) for a download that hands on report(size, fraction) at most once a
-// second: `size` as "70 / 236 MB" ("70 MB" when the server does not say how big it is), and
-// `fraction` the part done, from 0 to 1 (null when the size is not known). The end of a download
-// of known size is reported at once, to `finished(size)` when given: what follows a download
-// (extracting, installing) reports nothing, so its caller says that instead of showing a download
-// that never quite ends.
+// An onProgress(mb, totalMb) for a download, or for a file read into a command (extracting),
+// that hands on report(size, fraction) at most once a second: `size` as "70 / 236 MB" ("70 MB"
+// when the server does not say how big it is), and `fraction` the part done, from 0 to 1 (null
+// when the size is not known). The end of a transfer of known size is reported at once, to
+// `finished(size)` when given: when what follows reports nothing, its caller says that instead of
+// showing a download that never quite ends.
 /** @param {(size: string, fraction: number | null) => void} report @param {{ finished?: ((size: string) => void) | null, now?: () => number }} [options] */
-function downloadReporter(report, { finished = null, now = Date.now } = {}) {
+function progressReporter(report, { finished = null, now = Date.now } = {}) {
   let shown = 0;
   let ended = false;
   return (/** @type {number} */ mb, /** @type {number} */ totalMb) => {
@@ -67,6 +68,20 @@ function downloadReporter(report, { finished = null, now = Date.now } = {}) {
   };
 }
 
+// A stream that passes its data on and calls onProgress(mb, totalMb) for each chunk: how much has
+// gone through, of `totalBytes` (0 when not known).
+/** @param {number} totalBytes @param {(mb: number, totalMb: number) => void} onProgress */
+function countingStream(totalBytes, onProgress) {
+  let bytes = 0;
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      onProgress(bytes / 2 ** 20, totalBytes / 2 ** 20);
+      callback(null, chunk);
+    },
+  });
+}
+
 // Keeps an app page (the side bar, the dialog) where it is. A link or file dropped on it would
 // otherwise open in its place, with the page's preload and so its IPC; new windows are refused.
 // Loads from the main process (loadFile, reload) are not navigations a page starts.
@@ -75,4 +90,4 @@ function keepPage(contents) {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 }
 
-module.exports = { coalesce, downloadReporter, keepPage, mapLimit, oneLine, samePath, sleep };
+module.exports = { coalesce, countingStream, keepPage, mapLimit, oneLine, progressReporter, samePath, sleep };

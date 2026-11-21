@@ -11,20 +11,20 @@ const { createExtensionManagement } = require('./extension-management');
 const { idleWaitReason, installedExtensions, localTarget } = require('./extension-imports');
 const { ensureCodeServer, removeOldCodeServers } = require('./install');
 const { runAt } = require('../commands');
-const { downloadReporter, sleep } = require('../util');
+const { progressReporter, sleep } = require('../util');
 
 // While an update downloads, installs, or waits for the tabs, another cannot start.
 const UPDATE_BUSY = ['preparing', 'waiting', 'applying'];
 
-// An onProgress for ensureCodeServer that hands on report(detail, progress) at most once a second,
-// `progress` being the part of the download done (null when its size is not known). Extracting
-// follows the download and reports nothing, so its end goes back to preparing, without a part.
+// The onProgress and onExtract of ensureCodeServer. Each hands on report(detail, progress) at most
+// once a second, `progress` being the part of the download or of the extracting done (null when
+// the download's size is not known).
 /** @param {string} version @param {(detail: string, progress: number | null) => void} report */
-function downloadProgress(version, report, now = Date.now) {
-  return downloadReporter(
-    (size, progress) => report(t('Downloading code-server {version}… {progress}', { version, progress: size }), progress),
-    { now, finished: () => report(t('Preparing code-server {version}…', { version }), null) },
-  );
+function codeServerProgress(version, report, now = Date.now) {
+  return {
+    onProgress: progressReporter((size, progress) => report(t('Downloading code-server {version}… {progress}', { version, progress: size }), progress), { now }),
+    onExtract: progressReporter((_size, progress) => report(t('Extracting code-server {version}…', { version }), progress), { now }),
+  };
 }
 
 // `servers`: the code-server manager of the tabs here (null until it is made). `pause`: stops a
@@ -168,7 +168,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
         const dir = await ensure({
           dataDir,
           version: codeServer.to,
-          onProgress: downloadProgress(codeServer.to, (detail, progress) => report({ status: 'preparing', items, detail, progress })),
+          ...codeServerProgress(codeServer.to, (detail, progress) => report({ status: 'preparing', items, detail, progress })),
         });
         return { dir, version: codeServer.to };
       },
@@ -243,4 +243,4 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
   };
 }
 
-module.exports = { UPDATE_BUSY, createAppUpdates, downloadProgress };
+module.exports = { UPDATE_BUSY, codeServerProgress, createAppUpdates };

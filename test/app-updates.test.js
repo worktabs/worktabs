@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAppUpdates, downloadProgress } = require('../src/code-server/app-updates');
+const { codeServerProgress, createAppUpdates } = require('../src/code-server/app-updates');
 
 const update = { kind: 'extension', id: 'a.b', from: '1.0.0', to: '1.1.0' };
 
@@ -147,48 +147,55 @@ test('a switch of one agent\'s extensions waits only for that agent\'s turns and
   assert.deepEqual(claude.deferrable.map((tab) => tab.name), ['codex', 'edits']);
 });
 
-test('the download is reported at most once a second', () => {
+test('the download and the extracting of code-server are each reported at most once a second', () => {
   let at = 0;
   const shown = [];
-  const progress = downloadProgress('4.1.0', (detail, part) => shown.push([detail, part]), () => at);
+  const { onProgress, onExtract } = codeServerProgress('4.1.0', (detail, part) => shown.push([detail, part]), () => at);
   at = 1000;
-  progress(10, 100);
+  onProgress(10, 100);
   at = 1500;
-  progress(20, 100);
+  onProgress(20, 100);
   at = 2000;
-  progress(30, null);
+  onProgress(30, null);
   assert.deepEqual(shown, [['Downloading code-server 4.1.0… 10 / 100 MB', 0.1], ['Downloading code-server 4.1.0… 30 MB', null]]);
+
+  // The extracting follows the end of the download at once.
+  shown.length = 0;
+  at = 5000;
+  onProgress(50, 100);
+  at = 5200;
+  onProgress(100, 100);
+  onExtract(0.5, 100);
+  at = 5400;
+  onExtract(20, 100);
+  at = 6200;
+  onExtract(40, 100);
+  onExtract(100, 100);
+  assert.deepEqual(shown, [
+    ['Downloading code-server 4.1.0… 50 / 100 MB', 0.5], ['Downloading code-server 4.1.0… 100 / 100 MB', 1],
+    ['Extracting code-server 4.1.0…', 0.005], ['Extracting code-server 4.1.0…', 0.4], ['Extracting code-server 4.1.0…', 1],
+  ]);
 });
 
-test('the update card is given the part of the code-server download done', async () => {
+test('the update card is given the part of the code-server download and of its extracting done', async () => {
   const codeServer = { kind: 'code-server', id: 'code-server', name: 'code-server', from: '4.0.0', to: '4.1.0' };
   const seen = [];
   const { updates } = setup({
     found: { updates: [codeServer], errors: [] },
-    ensure: async ({ onProgress }) => {
+    ensure: async ({ onProgress, onExtract }) => {
       onProgress(59, 236);
       seen.push(updates.coordinator.state);
-      onProgress(236, 236);
+      onExtract(118, 236);
       seen.push(updates.coordinator.state);
-      throw new Error('offline');
+      throw new Error('Extracting failed: truncated');
     },
   });
   await updates.checkForUpdates();
   await updates.startUpdate();
   assert.deepEqual(seen.map(({ status, detail, progress }) => ({ status, detail, progress })), [
     { status: 'preparing', detail: 'Downloading code-server 4.1.0… 59 / 236 MB', progress: 0.25 },
-    { status: 'preparing', detail: 'Preparing code-server 4.1.0…', progress: null },
+    { status: 'preparing', detail: 'Extracting code-server 4.1.0…', progress: 0.5 },
   ]);
   assert.equal(updates.coordinator.state.status, 'failed');
   assert.equal(updates.coordinator.state.progress, undefined);
-});
-
-test('the end of the download goes back to preparing, as extracting reports no progress', () => {
-  let at = 1000;
-  const shown = [];
-  const progress = downloadProgress('4.1.0', (detail, part) => shown.push([detail, part]), () => at);
-  progress(50, 100);
-  at = 1200;
-  progress(100, 100);
-  assert.deepEqual(shown, [['Downloading code-server 4.1.0… 50 / 100 MB', 0.5], ['Preparing code-server 4.1.0…', null]]);
 });

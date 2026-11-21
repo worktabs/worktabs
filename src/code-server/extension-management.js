@@ -5,7 +5,7 @@ const { t } = require('../i18n');
 const { agentFor, leftOutExtensions } = require('../agents/agents');
 const imports = require('./extension-imports');
 const obsolete = require('./obsolete');
-const { downloadReporter } = require('../util');
+const { progressReporter } = require('../util');
 
 const PROTECTED_IDS = ['worktabs.worktabs-helper'];
 const EXTENSION_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i;
@@ -275,7 +275,7 @@ function createExtensionManagement({ config, extensionImports, updateCoordinator
   async function stageReleases(releases, installed, target, vscode, report) {
     const records = [];
     for (const item of releases) {
-      const onProgress = downloadReporter((size, progress) => report({
+      const onProgress = progressReporter((size, progress) => report({
         status: 'preparing', progress,
         detail: t('Downloading {name} {version} from Open VSX… {progress}', { name: item.name, version: item.version, progress: size }),
       }), { now });

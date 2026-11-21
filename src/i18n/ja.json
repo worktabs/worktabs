@@ -367,6 +367,7 @@
   "There is no code-server for WSL {distro} ({machine})": "WSL の {distro}（{machine}）向けの code-server はありません",
   "code-server is not found in WSL {distro}: {dir} (wslCodeServerDir)": "WSL の {distro} に code-server が見つかりません: {dir}（wslCodeServerDir）",
   "Downloading code-server {version} for WSL… {progress}": "WSL 用の code-server {version} をダウンロードしています… {progress}",
+  "Extracting code-server {version}…": "code-server {version} を展開しています…",
   "Extracting code-server {version} in WSL {distro}…": "WSL の {distro} に code-server {version} を展開しています…",
   "Could not extract code-server in WSL: {error}": "WSL に code-server を展開できませんでした: {error}",
   "Preparing WSL {distro}…": "WSL の {distro} を準備しています…",

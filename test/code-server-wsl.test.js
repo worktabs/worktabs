@@ -155,26 +155,28 @@ test('a failed WSL sync does not hold up the next one', async (t) => {
   assert.equal(f.events.at(-1), 'read acme.one');
 });
 
-test('the download of code-server for WSL reports the part done before extracting', async (t) => {
+test('code-server for WSL reports the part of its download and of its extracting done', async (t) => {
   const dir = tempDir(t);
   const archive = path.join(dir, 'code-server.tar.gz');
   fs.writeFileSync(archive, 'archive');
   const progress = [];
+  const extracted = [];
   const manager = {
     distro: 'Ubuntu', arch: 'amd64', base: '/home/me/.worktabs', version: () => '4.146.0',
     download: async ({ onProgress }) => { onProgress(59, 236); onProgress(236, 236); return archive; },
     wsl: { execDirect: async (_command, _args, { input }) => {
-      const closed = new Promise((resolve) => input.once('close', resolve));
-      input.destroy();
-      await closed;
+      for await (const chunk of input) extracted.push(String(chunk));
     } },
   };
   await WslCodeServerManager.prototype.installCodeServer.call(manager, (text, part) => progress.push([text, part]));
   assert.deepEqual(progress, [
     ['Downloading code-server 4.146.0 for WSL… 59 / 236 MB', 0.25],
     ['Downloading code-server 4.146.0 for WSL… 236 / 236 MB', 1],
-    ['Extracting code-server 4.146.0 in WSL Ubuntu…', undefined],
+    // tar in WSL reads the archive from its standard input; the part it has read is how far it is.
+    ['Extracting code-server 4.146.0 in WSL Ubuntu…', 0],
+    ['Extracting code-server 4.146.0 in WSL Ubuntu…', 1],
   ]);
+  assert.equal(extracted.join(''), 'archive');
   assert.equal(fs.existsSync(archive), false);
 });
 

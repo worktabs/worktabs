@@ -1,11 +1,12 @@
 // Downloads the code-server release the app was tested with, when no install is configured.
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { Readable, Transform } = require('stream');
+const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const { serverNode } = require('./code-server');
 const { t } = require('../i18n');
+const { countingStream } = require('../util');
 
 // How code-server names its releases, by platform and architecture. Windows has an amd64
 // release only; macOS has one for each, and an Intel Mac must not be given the arm64 one.
@@ -45,24 +46,39 @@ async function downloadRelease({ dataDir, version, name, onProgress = () => {} }
     const res = await net.fetch(url);
     if (!res.ok) throw new Error(t('Could not download code-server {version} (HTTP {status})', { version, status: res.status }));
     const total = Number(res.headers.get('content-length')) || 0;
-    let received = 0;
-    const progress = new Transform({
-      transform(chunk, _encoding, callback) {
-        received += chunk.length;
-        onProgress(received / 2 ** 20, total / 2 ** 20);
-        callback(null, chunk);
-      },
-    });
-    await pipeline(Readable.fromWeb(res.body), progress, fs.createWriteStream(partial));
+    await pipeline(Readable.fromWeb(res.body), countingStream(total, onProgress), fs.createWriteStream(partial));
     fs.renameSync(partial, archive);
   }
   return archive;
 }
 
+// Extracts the .tar.gz `archive` into `dir`. tar reads it from its standard input, through a
+// stream that counts the bytes: tar reads only as fast as it writes the files, so the part of the
+// archive read is how far it has gone. onProgress(readMB, totalMB) reports it.
+/** @param {string} archive @param {string} dir @param {(mb: number, totalMb: number) => void} [onProgress] */
+function extractArchive(archive, dir, onProgress = () => {}, command = tarCommand()) {
+  const args = ['-xzf', '-', '-C', dir];
+  const total = fs.statSync(archive).size;
+  return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+    const child = spawn(command, args, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (text) => { stderr += text; });
+    // A tar that stops reading (a broken archive) closes the pipe; its own error says why.
+    pipeline(fs.createReadStream(archive), countingStream(total, onProgress), child.stdin).catch(() => {});
+    child.on('error', (error) => reject(new Error(t('Extracting failed: {error}', { error: error.message }))));
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(t('Extracting failed: {error}', { error: stderr.trim() || `Command failed: ${command} ${args.join(' ')}` })));
+    });
+  }));
+}
+
 // Returns the code-server directory under <dataDir>/code-server, downloading and extracting
-// the release first if needed. onProgress(downloadedMB, totalMB) reports the download.
-/** @param {{ dataDir: string, version: string, onProgress?: (mb: number, totalMb: number) => void }} options */
-async function ensureCodeServer({ dataDir, version, onProgress = () => {} }) {
+// the release first if needed. onProgress(downloadedMB, totalMB) reports the download, and
+// onExtract(readMB, totalMB) the extracting (extractArchive).
+/** @param {{ dataDir: string, version: string, onProgress?: (mb: number, totalMb: number) => void, onExtract?: (mb: number, totalMb: number) => void }} options */
+async function ensureCodeServer({ dataDir, version, onProgress = () => {}, onExtract = () => {} }) {
   const name = releaseName(version);
   if (!name) {
     throw new Error(t('Downloading code-server is not supported here ({platform}-{arch}). Set codeServerDir in config.local.json.', { platform: process.platform, arch: process.arch }));
@@ -72,11 +88,15 @@ async function ensureCodeServer({ dataDir, version, onProgress = () => {} }) {
   if (fs.existsSync(serverNode(dir))) return dir;
   const archive = await downloadRelease({ dataDir, version, name, onProgress });
 
-  await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
-    execFile(tarCommand(), ['-xzf', archive, '-C', root], { windowsHide: true }, (error, _stdout, stderr) =>
-      error ? reject(new Error(t('Extracting failed: {error}', { error: stderr || error.message }))) : resolve(),
-    );
-  }));
+  try {
+    await extractArchive(archive, root, onExtract);
+  } catch (error) {
+    // What tar wrote before it failed must not look like a release at the next start. Failing
+    // that too, tar's error is still the one to show.
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); }
+    catch { /* tar's error says more */ }
+    throw error;
+  }
   fs.rmSync(archive, { force: true });
   if (!fs.existsSync(serverNode(dir))) throw new Error(t('{path} is not found after extracting', { path: dir }));
   return dir;
@@ -100,4 +120,4 @@ function removeOldCodeServers(dataDir, keep) {
   }
 }
 
-module.exports = { downloadRelease, ensureCodeServer, releaseName, removeOldCodeServers, tarCommand };
+module.exports = { downloadRelease, ensureCodeServer, extractArchive, releaseName, removeOldCodeServers, tarCommand };
