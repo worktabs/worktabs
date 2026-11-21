@@ -2,6 +2,16 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.12.1] - 2026-11-21
+
+### Bug fixes
+- give a chat's input box back to the IME after the focus moves ([#91](https://github.com/worktabs/worktabs/pull/91))
+- update Claude Code in a WSL distribution that missed an update ([#89](https://github.com/worktabs/worktabs/pull/89))
+- apply Codex approvals to the visible composer ([#87](https://github.com/worktabs/worktabs/pull/87))
+
+### Documentation
+- refresh the grouped sidebar screenshots ([#83](https://github.com/worktabs/worktabs/pull/83))
+
 ## [0.12.0] - 2026-11-16
 
 ### Features
