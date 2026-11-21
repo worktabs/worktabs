@@ -8,7 +8,7 @@ The main process's modules are grouped by what they deal with, one folder each u
 
 - `src/main.js`: Electron's main process. Makes the window and its views, and wires the modules below together. Cannot be loaded without Electron
 - `src/config.js`, `src/commands.js`, `src/shell-env.js`: The settings file, running commands (and git's messages), and on mac the login shell's environment (Homebrew's PATH and so on) for an app started from Finder and the like
-- `src/util.js`: Small helpers several modules share (`sleep`, `oneLine`, `samePath`, `coalesce`, `mapLimit`). `wsl/wsl-agent.js` keeps its own, as it runs inside WSL by itself
+- `src/util.js`: Small helpers several modules share (`sleep`, `oneLine`, `samePath`, `coalesce`, `mapLimit`, `downloadReporter`). `wsl/wsl-agent.js` keeps its own, as it runs inside WSL by itself
 - `src/window/`: The window and what the side bar asks of it. Testable without Electron
   - `window-layout.js`: Laying out the views, dragging the side bar's edge, and window.json. `sidebar-width.js`: the side bar's width (minimum, maximum, and the width that fits the window)
   - `menus.js`: The side bar's context menus. `settings-actions.js`: saving settings, adding a repository by hand, and picking extensions. `host-keys.js`: the keys the app keeps from VS Code. `theme.js`: the colors of the VS Code theme in the tab in front. `app-icons.js`: the app's icon

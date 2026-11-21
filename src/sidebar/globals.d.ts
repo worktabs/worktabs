@@ -19,6 +19,7 @@ declare const createSidebarRows: typeof import('./rows.js').createSidebarRows;
 declare const createUnclonedSection: typeof import('./uncloned.js').createUnclonedSection;
 declare const createGithubBar: typeof import('./github-bar.js').createGithubBar;
 declare const createUpdateCard: typeof import('./update-card.js').createUpdateCard;
+declare const updateProgressBar: typeof import('./update-card.js').updateProgressBar;
 declare const createAppUpdateCard: typeof import('./app-update-card.js').createAppUpdateCard;
 declare const createUsageFooter: typeof import('./usage-footer.js').createUsageFooter;
 declare const attachSidebarResize: typeof import('./resize.js').attachSidebarResize;

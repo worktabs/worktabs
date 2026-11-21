@@ -2,6 +2,9 @@
 // main process): what is offered or going on, with its buttons. It looks like the update card of
 // code-server and the extensions. Made again from the state on every render.
 
+// In the tests; a page has it from update-card.js, which it loads before this one.
+if (typeof module === 'object') var { updateProgressBar } = require('./update-card');
+
 function createAppUpdateCard({ element, host, dom, t, listText, clock = Date.now }) {
   const { el } = dom;
 
@@ -70,14 +73,7 @@ function createAppUpdateCard({ element, host, dom, t, listText, clock = Date.now
       head.append(close);
     }
     const parts = [head];
-    if (status === 'downloading') {
-      const bar = el('div', 'update-progress');
-      bar.setAttribute('role', 'progressbar');
-      bar.setAttribute('aria-label', t('In progress'));
-      // The phase follows the clock, so a redraw does not make the bar jump back (update-card.js).
-      bar.style.setProperty('--phase', `${-(clock() % 1400)}ms`);
-      parts.push(bar);
-    }
+    if (status === 'downloading') parts.push(updateProgressBar({ el, t, progress: update.progress, clock }));
     if (update.from && status !== 'done') {
       const list = el('ul', 'update-items');
       const row = el('li');

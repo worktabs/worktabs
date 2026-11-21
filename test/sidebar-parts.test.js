@@ -71,6 +71,37 @@ test('the update card hides without an update, and offers what each state allows
   assert.equal(element.querySelectorAll('button').length, 0);
 });
 
+test('the update card fills its bar by the part of a download done, and sweeps without one', () => {
+  const { document, el } = dom();
+  const element = document.createElement('section');
+  const host = new Proxy({}, { get: () => () => {} });
+  const card = createUpdateCard({ element, host, dom: { el }, t, listText: (items) => items.join(', '), clock: () => PROGRESS_CYCLE_MS + 300 });
+  const items = [{ name: 'code-server', from: '4.145.2', to: '4.146.0' }];
+  card.render({ status: 'preparing', items, detail: 'Downloading code-server 4.146.0… 70 / 236 MB', progress: 70 / 236 });
+  let bar = element.querySelector('.update-progress');
+  assert.equal(bar.className, 'update-progress determinate');
+  assert.equal(bar.getAttribute('aria-valuenow'), '30');
+  assert.equal(bar.getAttribute('aria-valuemax'), '100');
+  assert.equal(bar.style.values['--done'], '30%');
+  assert.equal(bar.style.values['--phase'], undefined);
+
+  // Out of range, it stays within the bar.
+  card.render({ status: 'applying', items, detail: '', progress: 1.2 });
+  assert.equal(element.querySelector('.update-progress').style.values['--done'], '100%');
+
+  for (const progress of [null, undefined, Number.NaN]) {
+    card.render({ status: 'preparing', items, detail: 'Preparing code-server 4.146.0…', progress });
+    bar = element.querySelector('.update-progress');
+    assert.equal(bar.className, 'update-progress');
+    assert.equal(bar.getAttribute('aria-valuenow'), null);
+    assert.equal(bar.style.values['--phase'], '-300ms');
+  }
+
+  // A state that is not in progress has no bar, whatever it carries.
+  card.render({ status: 'waiting', items, busy: ['a'], detail: '', progress: 0.5 });
+  assert.equal(element.querySelector('.update-progress'), null);
+});
+
 test('the Worktabs update card offers what each state allows', () => {
   const { document, el } = dom();
   const element = document.createElement('section');
@@ -96,9 +127,12 @@ test('the Worktabs update card offers what each state allows', () => {
   assert.deepEqual(labels(), ['Release page', 'Skip this version']);
   assert.equal(element.querySelector('.update-detail').textContent, 'Worktabs is at the root of a drive.\nDownload it from the release page.');
 
-  card.render({ status: 'downloading', ...base, detail: '5 / 100 MB' });
+  card.render({ status: 'downloading', ...base, detail: '' });
   assert.equal(element.className, 'update preparing');
   assert.equal(element.querySelector('.update-progress').style.values['--phase'], '-100ms');
+  card.render({ status: 'downloading', ...base, detail: '5 / 100 MB', progress: 0.05 });
+  assert.equal(element.querySelector('.update-progress').style.values['--done'], '5%');
+  assert.equal(element.querySelector('.update-progress').getAttribute('aria-valuenow'), '5');
   assert.deepEqual(labels(), []);
 
   card.render({ status: 'ready', ...base });

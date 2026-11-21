@@ -42,6 +42,31 @@ async function mapLimit(items, limit, fn) {
   return results;
 }
 
+// An onProgress(mb, totalMb) for a download that hands on report(size, fraction) at most once a
+// second: `size` as "70 / 236 MB" ("70 MB" when the server does not say how big it is), and
+// `fraction` the part done, from 0 to 1 (null when the size is not known). The end of a download
+// of known size is reported at once, to `finished(size)` when given: what follows a download
+// (extracting, installing) reports nothing, so its caller says that instead of showing a download
+// that never quite ends.
+/** @param {(size: string, fraction: number | null) => void} report @param {{ finished?: ((size: string) => void) | null, now?: () => number }} [options] */
+function downloadReporter(report, { finished = null, now = Date.now } = {}) {
+  let shown = 0;
+  let ended = false;
+  return (/** @type {number} */ mb, /** @type {number} */ totalMb) => {
+    if (ended) return;
+    const size = `${mb.toFixed(0)}${totalMb ? ` / ${totalMb.toFixed(0)}` : ''} MB`;
+    if (totalMb && mb >= totalMb) {
+      ended = true;
+      if (finished) finished(size);
+      else report(size, 1);
+      return;
+    }
+    if (now() - shown < 1000) return;
+    shown = now();
+    report(size, totalMb ? mb / totalMb : null);
+  };
+}
+
 // Keeps an app page (the side bar, the dialog) where it is. A link or file dropped on it would
 // otherwise open in its place, with the page's preload and so its IPC; new windows are refused.
 // Loads from the main process (loadFile, reload) are not navigations a page starts.
@@ -50,4 +75,4 @@ function keepPage(contents) {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 }
 
-module.exports = { coalesce, keepPage, mapLimit, oneLine, samePath, sleep };
+module.exports = { coalesce, downloadReporter, keepPage, mapLimit, oneLine, samePath, sleep };
