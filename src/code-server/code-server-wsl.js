@@ -13,6 +13,7 @@ const { InstanceManager } = require('./code-server-instances');
 const { parseExtensionIndex } = require('./extension-index');
 const fs = require('fs');
 const path = require('path');
+const semver = require('semver');
 const {
   firstErrorLine, SYSTEM_CA_ENV,
   serverFolderFromUrl,
@@ -39,6 +40,20 @@ function installedVersions(text) {
   try { return parseExtensionIndex(text).versions; } catch { return new Map(); }
 }
 
+// What unpinned-extensions.json records: lowercase id -> the Windows tabs' version when the
+// distribution last took the latest release of that extension.
+function takenVersions(text) {
+  let value = null;
+  try { value = JSON.parse(text); } catch { /* none recorded yet */ }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return new Map();
+  return new Map(Object.entries(value).filter(([, version]) => typeof version === 'string'));
+}
+
+// Whether an installed version is older than the Windows tabs' one.
+function olderThan(version, windows) {
+  return Boolean(semver.valid(version) && semver.valid(windows) && semver.lt(version, windows));
+}
+
 // What went wrong in a failed command: its first error line, else its first line.
 function firstError(error) {
   return firstErrorLine(error.stderr, error.message);
@@ -51,14 +66,16 @@ class WslCodeServerManager extends InstanceManager {
   // (resolves the archive's path on Windows), extensions (ids, and VSIX files on Windows),
   // windowsExtensionsDir (the extension versions to install: those the Windows tabs have),
   // hooks (the HookServer), locale, managedSettings (as for CodeServerManager, without the
-  // claude wrapper, which is this distribution's)
+  // claude wrapper, which is this distribution's), log(line) (what went wrong without stopping
+  // a tab)
   /**
    * @param {{ distro: string, dataDir: string, version?: () => string, customDir?: string,
    *   download?: (options: { version: string, name: string, onProgress: (mb: number, totalMb: number) => void }) => Promise<string>,
    *   extensions?: string[], extensionSpecs?: (target: string) => string[], unpinnedExtensions?: string[],
    *   beforeSync?: (target: string, onProgress: (text: string) => void) => Promise<void> | void,
    *   restrictExtensionGallery?: boolean, windowsExtensionsDir?: string, hooks: { token: string },
-   *   locale?: string, managedSettings?: Record<string, any>, runtime?: object, wsl?: any }} options
+   *   locale?: string, managedSettings?: Record<string, any>, log?: (line: string) => void,
+   *   runtime?: object, wsl?: any }} options
    */
   constructor(options) {
     super();
@@ -78,6 +95,7 @@ class WslCodeServerManager extends InstanceManager {
     this.hooks = options.hooks;
     this.locale = options.locale;
     this.managedSettings = options.managedSettings;
+    this.log = options.log;
     this.runtime = launchRuntime(options.runtime);
     this.wsl = options.wsl || wslDistro(this.distro);
     this.seq = 0;
@@ -258,6 +276,13 @@ class WslCodeServerManager extends InstanceManager {
   // obsolete, and the next code-server that serves a page deletes it, even while another tab
   // still runs it. The helper extension goes in at the app's version.
   //
+  // The unpinned extensions (Claude Code) take the latest release from Open VSX instead: when
+  // missing, and with `force`. An update skips a distribution not used in its run, so while no
+  // tab runs here, one older than the Windows tabs' version also takes the latest (#88). That
+  // happens once for each Windows version (unpinned-extensions.json), so a distribution whose
+  // newest release is still older does not take it again at every start. If it fails, the tab
+  // starts with the version it has, and the next start tries again.
+  //
   // One sync runs at a time, as prepare does. The tabs that waited on prepare reach this all at
   // once, and an update's forced sync can come with them. Each would install the same missing
   // extension into the shared extensions folder, where code-server extracts it beside its place
@@ -285,6 +310,8 @@ class WslCodeServerManager extends InstanceManager {
     }
     const wanted = installedVersions(windowsList);
     const have = installedVersions(await this.wsl.readFile(`${this.extensionsDir}/extensions.json`));
+    const takenFile = `${this.base}/unpinned-extensions.json`;
+    const taken = takenVersions(await this.wsl.readFile(takenFile));
     const replace = force || !this.instances.size;
     const extensions = this.extensionSpecs ? this.extensionSpecs(`linux-${this.arch === 'arm64' ? 'arm64' : 'x64'}`) : this.extensions;
     for (const extension of extensions) {
@@ -297,10 +324,23 @@ class WslCodeServerManager extends InstanceManager {
         await this.installExtension(copy);
         continue;
       }
-      const version = this.unpinnedExtensions?.includes(extension.toLowerCase()) ? null : wanted.get(extension.toLowerCase());
-      const current = have.get(extension.toLowerCase());
-      if (current && ((!version && !force) || (version && current === version) || !replace)) continue;
-      await this.installExtension(version ? `${extension}@${version}` : extension);
+      const id = extension.toLowerCase();
+      const unpinned = Boolean(this.unpinnedExtensions?.includes(id));
+      const version = unpinned ? null : wanted.get(id);
+      const current = have.get(id);
+      const behind = unpinned && replace && olderThan(current, wanted.get(id)) && taken.get(id) !== wanted.get(id);
+      if (current && !behind && ((!version && !force) || (version && current === version) || !replace)) continue;
+      try {
+        await this.installExtension(version ? `${extension}@${version}` : extension);
+      } catch (error) {
+        if (!behind || force) throw error;
+        this.log?.(`WSL ${this.distro}: ${extension} not updated: ${error.message}`);
+        continue;
+      }
+      if (unpinned && wanted.has(id)) {
+        taken.set(id, wanted.get(id));
+        await this.wsl.writeFile(takenFile, `${JSON.stringify(Object.fromEntries(taken), null, 2)}\n`);
+      }
     }
   }
 
