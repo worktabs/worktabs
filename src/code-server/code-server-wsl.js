@@ -14,6 +14,7 @@ const { parseExtensionIndex } = require('./extension-index');
 const fs = require('fs');
 const path = require('path');
 const semver = require('semver');
+const { pipeline } = require('stream');
 const {
   firstErrorLine, SYSTEM_CA_ENV,
   serverFolderFromUrl,
@@ -22,7 +23,7 @@ const {
 } = require('./code-server-launch');
 const { hookSettings } = require('../conversations/hooks');
 const { t } = require('../i18n');
-const { downloadReporter } = require('../util');
+const { countingStream, progressReporter } = require('../util');
 const { parseWslPath, shellQuote, windowsPath, wslDistro } = require('../wsl/wsl');
 
 // `uname -m` -> the architecture in code-server's release names.
@@ -240,14 +241,21 @@ class WslCodeServerManager extends InstanceManager {
     const archive = await this.download({
       version,
       name,
-      onProgress: downloadReporter((size, progress) => onProgress(t('Downloading code-server {version} for WSL… {progress}', { version, progress: size }), progress)),
+      onProgress: progressReporter((size, progress) => onProgress(t('Downloading code-server {version} for WSL… {progress}', { version, progress: size }), progress)),
     });
-    onProgress(t('Extracting code-server {version} in WSL {distro}…', { version, distro: this.distro }));
+    // The part of the archive tar has read is how far it has gone: it reads only as fast as it
+    // writes the files.
+    const extracting = t('Extracting code-server {version} in WSL {distro}…', { version, distro: this.distro });
+    onProgress(extracting, 0);
+    const input = pipeline(fs.createReadStream(archive),
+      countingStream(fs.statSync(archive).size, progressReporter((_size, progress) => onProgress(extracting, progress))),
+      // A tar that stops reading closes the pipe; its own error says why.
+      () => {});
     // Extracted beside its place first, so a release cut short never looks installed.
     const script = 'set -e; mkdir -p "$1"; tmp=$(mktemp -d "$1/.extract-XXXXXX"); trap \'rm -rf "$tmp"\' EXIT; tar -xzf - -C "$tmp"; [ -e "$1/$2" ] || mv "$tmp/$2" "$1/$2"';
     try {
       await this.wsl.execDirect('sh', ['-c', script, 'sh', `${this.base}/code-server`, name], {
-        input: fs.createReadStream(archive),
+        input,
         timeout: 10 * 60 * 1000,
       });
     } catch (error) {

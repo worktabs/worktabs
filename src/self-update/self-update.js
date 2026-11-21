@@ -3,7 +3,7 @@
 // quits: at once with "Restart now" (after the working tabs finish), or whenever the app quits
 // next. Everything that touches the network, the disk, or the window is injected.
 const { t } = require('../i18n');
-const { downloadReporter } = require('../util');
+const { progressReporter } = require('../util');
 
 // While these last, a check does not replace what the card shows.
 const BUSY = ['downloading', 'ready', 'waiting'];
@@ -82,7 +82,7 @@ function createSelfUpdate({ currentVersion, appPath, reason = '', find, stage, s
   async function start() {
     if (!release || !appPath || !['available', 'failed'].includes(state.status)) return;
     // Checking the zip and extracting it follow the download and report nothing.
-    const progress = downloadReporter((size, fraction) => report({ status: 'downloading', ...base(), detail: size, progress: fraction }),
+    const progress = progressReporter((size, fraction) => report({ status: 'downloading', ...base(), detail: size, progress: fraction }),
       { now, finished: () => report({ status: 'downloading', ...base(), detail: '' }) });
     report({ status: 'downloading', ...base(), detail: '' });
     try {
