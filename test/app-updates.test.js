@@ -4,7 +4,7 @@ const { createAppUpdates, downloadProgress } = require('../src/code-server/app-u
 
 const update = { kind: 'extension', id: 'a.b', from: '1.0.0', to: '1.1.0' };
 
-function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local', agents = ['claude', 'codex'], conversations = {} } = {}) {
+function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], codexActive = null, records = [], openVsx = null, codeServerDir = '/cs', target = 'local', agents = ['claude', 'codex'], conversations = {}, ensure = undefined } = {}) {
   const calls = [];
   const logged = [];
   const config = { agents, codeServerVersion: '4.0.0', resolvedExtensions: [], resolvedExtensionsDir: '/ext' };
@@ -22,7 +22,7 @@ function setup({ found = { updates: [], errors: [] }, local = [], tabs = [], cod
       if (found instanceof Error) throw found;
       return found;
     },
-    localExtensions: () => [], target: () => target, conversations: (id) => conversations[id] || [],
+    localExtensions: () => [], target: () => target, conversations: (id) => conversations[id] || [], ensure,
   });
   return { updates, calls, logged, config };
 }
@@ -150,12 +150,45 @@ test('a switch of one agent\'s extensions waits only for that agent\'s turns and
 test('the download is reported at most once a second', () => {
   let at = 0;
   const shown = [];
-  const progress = downloadProgress('4.1.0', (detail) => shown.push(detail), () => at);
+  const progress = downloadProgress('4.1.0', (detail, part) => shown.push([detail, part]), () => at);
   at = 1000;
   progress(10, 100);
   at = 1500;
   progress(20, 100);
   at = 2000;
   progress(30, null);
-  assert.deepEqual(shown, ['Downloading code-server 4.1.0… 10 / 100 MB', 'Downloading code-server 4.1.0… 30 MB']);
+  assert.deepEqual(shown, [['Downloading code-server 4.1.0… 10 / 100 MB', 0.1], ['Downloading code-server 4.1.0… 30 MB', null]]);
+});
+
+test('the update card is given the part of the code-server download done', async () => {
+  const codeServer = { kind: 'code-server', id: 'code-server', name: 'code-server', from: '4.0.0', to: '4.1.0' };
+  const seen = [];
+  const { updates } = setup({
+    found: { updates: [codeServer], errors: [] },
+    ensure: async ({ onProgress }) => {
+      onProgress(59, 236);
+      seen.push(updates.coordinator.state);
+      onProgress(236, 236);
+      seen.push(updates.coordinator.state);
+      throw new Error('offline');
+    },
+  });
+  await updates.checkForUpdates();
+  await updates.startUpdate();
+  assert.deepEqual(seen.map(({ status, detail, progress }) => ({ status, detail, progress })), [
+    { status: 'preparing', detail: 'Downloading code-server 4.1.0… 59 / 236 MB', progress: 0.25 },
+    { status: 'preparing', detail: 'Preparing code-server 4.1.0…', progress: null },
+  ]);
+  assert.equal(updates.coordinator.state.status, 'failed');
+  assert.equal(updates.coordinator.state.progress, undefined);
+});
+
+test('the end of the download goes back to preparing, as extracting reports no progress', () => {
+  let at = 1000;
+  const shown = [];
+  const progress = downloadProgress('4.1.0', (detail, part) => shown.push([detail, part]), () => at);
+  progress(50, 100);
+  at = 1200;
+  progress(100, 100);
+  assert.deepEqual(shown, [['Downloading code-server 4.1.0… 50 / 100 MB', 0.5], ['Preparing code-server 4.1.0…', null]]);
 });

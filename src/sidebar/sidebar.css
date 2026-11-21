@@ -275,7 +275,7 @@ header .icon-button {
   visibility: visible;
 }
 
-/* A sweep for an update in progress. --phase (set by sidebar.js) keeps it in step across redraws. */
+/* A sweep for an update in progress. --phase (set by update-card.js) keeps it in step across redraws. */
 .update-progress {
   position: relative;
   height: 2px;
@@ -301,6 +301,12 @@ header .icon-button {
   to {
     transform: translateX(290%);
   }
+}
+
+/* A download whose size is known fills the bar instead (--done, set by update-card.js). */
+.update-progress.determinate::before {
+  width: var(--done, 0%);
+  animation: none;
 }
 
 .update-items {
@@ -1196,7 +1202,7 @@ main [role='tree'] {
     opacity: 0.45;
   }
 
-  .update-progress::before {
+  .update-progress:not(.determinate)::before {
     width: 100%;
     animation: none;
     opacity: 0.6;

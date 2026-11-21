@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
-const { coalesce, keepPage, mapLimit, oneLine, samePath, sleep } = require('../src/util');
+const { coalesce, downloadReporter, keepPage, mapLimit, oneLine, samePath, sleep } = require('../src/util');
 
 test('oneLine joins the lines of a message or an error', () => {
   assert.equal(oneLine('fatal: one\n  two\r\nthree'), 'fatal: one two three');
@@ -67,4 +67,38 @@ test('mapLimit runs at most limit at once and keeps the order of the items', asy
   assert.deepEqual(results, ['0:30', '1:10', '2:20', '3:0', '4:5']);
   assert.equal(most, 2);
   assert.deepEqual(await mapLimit([], 4, async () => 1), []);
+});
+
+test('downloadReporter reports a download at most once a second, with the part done when its size is known', () => {
+  let at = 0;
+  const shown = [];
+  const progress = downloadReporter((size, fraction) => shown.push([size, fraction]), { now: () => at });
+  at = 1000;
+  progress(10, 100);
+  at = 1500;
+  progress(20, 100);
+  at = 2000;
+  progress(30, 100);
+  at = 3000;
+  progress(40, 0);
+  assert.deepEqual(shown, [['10 / 100 MB', 0.1], ['30 / 100 MB', 0.3], ['40 MB', null]]);
+});
+
+test('downloadReporter reports the end of a download at once, and once', () => {
+  let at = 1000;
+  const shown = [];
+  const progress = downloadReporter((size, fraction) => shown.push([size, fraction]), { now: () => at });
+  progress(99, 100);
+  at = 1001;
+  progress(100, 100);
+  progress(100, 100);
+  assert.deepEqual(shown, [['99 / 100 MB', 0.99], ['100 / 100 MB', 1]]);
+
+  // What follows the download reports nothing: `finished` says that instead.
+  const finished = [];
+  const ended = downloadReporter((size, fraction) => shown.push([size, fraction]), { now: () => at, finished: (size) => finished.push(size) });
+  ended(236, 236);
+  ended(236, 236);
+  assert.deepEqual(finished, ['236 / 236 MB']);
+  assert.equal(shown.length, 2);
 });

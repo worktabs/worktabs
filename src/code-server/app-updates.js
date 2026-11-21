@@ -11,20 +11,20 @@ const { createExtensionManagement } = require('./extension-management');
 const { idleWaitReason, installedExtensions, localTarget } = require('./extension-imports');
 const { ensureCodeServer, removeOldCodeServers } = require('./install');
 const { runAt } = require('../commands');
-const { sleep } = require('../util');
+const { downloadReporter, sleep } = require('../util');
 
 // While an update downloads, installs, or waits for the tabs, another cannot start.
 const UPDATE_BUSY = ['preparing', 'waiting', 'applying'];
 
-// An onProgress for ensureCodeServer that reports the download at most once a second.
+// An onProgress for ensureCodeServer that hands on report(detail, progress) at most once a second,
+// `progress` being the part of the download done (null when its size is not known). Extracting
+// follows the download and reports nothing, so its end goes back to preparing, without a part.
+/** @param {string} version @param {(detail: string, progress: number | null) => void} report */
 function downloadProgress(version, report, now = Date.now) {
-  let shown = 0;
-  return (mb, totalMb) => {
-    if (now() - shown < 1000) return;
-    shown = now();
-    const of = totalMb ? ` / ${totalMb.toFixed(0)} MB` : ' MB';
-    report(t('Downloading code-server {version}… {progress}', { version, progress: `${mb.toFixed(0)}${of}` }));
-  };
+  return downloadReporter(
+    (size, progress) => report(t('Downloading code-server {version}… {progress}', { version, progress: size }), progress),
+    { now, finished: () => report(t('Preparing code-server {version}…', { version }), null) },
+  );
 }
 
 // `servers`: the code-server manager of the tabs here (null until it is made). `pause`: stops a
@@ -168,7 +168,7 @@ function createAppUpdates({ config, saveConfig, dataDir, tabs, servers, wslServe
         const dir = await ensure({
           dataDir,
           version: codeServer.to,
-          onProgress: downloadProgress(codeServer.to, (detail) => report({ status: 'preparing', items, detail })),
+          onProgress: downloadProgress(codeServer.to, (detail, progress) => report({ status: 'preparing', items, detail, progress })),
         });
         return { dir, version: codeServer.to };
       },

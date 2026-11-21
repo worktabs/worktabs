@@ -27,7 +27,7 @@ async function applyGalleryUpdate({ items, extensions, next, previous, report, l
   const failures = [];
   for (const manager of failure ? [] : wsl()) {
     try {
-      await manager.applyUpdate((detail) => report({ status: 'applying', detail }));
+      await manager.applyUpdate((detail, progress) => report({ status: 'applying', detail, progress }));
     } catch (error) {
       log(`WSL ${manager.distro} failed: ${error.message}`);
       failures.push(t('Could not update WSL {distro}: {error}', { distro: manager.distro, error: error.message }));

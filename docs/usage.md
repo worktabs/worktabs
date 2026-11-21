@@ -390,7 +390,7 @@ When Codex is enabled, the sidebar footer also shows **Codex · Used**. Worktabs
 At start and twice a day after it, Worktabs asks GitHub for its newest release. When there is a newer one, "Worktabs <version> is available" appears at the top of the sidebar. "Check for a new version of Worktabs" under "…" asks at once. Builds you made yourself do not ask.
 
 - "Release notes" opens the release on GitHub. "Skip this version" stops offering that version (the menu still finds it).
-- "Update" downloads the zip of the release, checks it against `SHA256SUMS.txt`, and extracts it next to the app. The app keeps running meanwhile.
+- "Update" downloads the zip of the release, checks it against `SHA256SUMS.txt`, and extracts it next to the app. The app keeps running meanwhile. The bar in the card fills as the download goes.
 - Then the card says the new version is ready. It installs the next time Worktabs quits. "Restart now" waits until no tab is working or waiting for approval and there are no unsaved edits, then quits and starts the new version. The tabs come back as after any restart.
 - After Worktabs quits, a small script waits for it and for everything started from its folder to exit, moves the app aside, moves the new one in, and deletes the old one. If it cannot, the previous version stays, and the card says why at the next start.
 
@@ -404,7 +404,7 @@ Use **Settings > Extensions** (the gear at the top of the sidebar, or **Extensio
 
 The app does not update code-server or the extensions (Claude Code and the language pack) on its own. When a new version exists, "Update available" appears at the top of the sidebar.
 
-- Press "Update", and the app first downloads code-server. Then it waits until no tab is working or waiting for approval and there are no unsaved edits, and updates. While it waits, "Cancel the update" cancels it. While it downloads and installs, a moving bar in the card shows that it is still working. The installer reports no percentage.
+- Press "Update", and the app first downloads code-server. Then it waits until no tab is working or waiting for approval and there are no unsaved edits, and updates. While it waits, "Cancel the update" cancels it. While it downloads, the bar in the card fills as the download goes. While it extracts and installs, the bar moves to show that it is still working, as these steps report no percentage.
 - Before restarting tabs, the app starts one instance of the new version in the background and checks it: no login screen, the folder opens, the display is in the display language, and Claude Code starts. When code-server itself changes and Codex is installed, it also opens the Codex chat and checks that it starts within 60 seconds without VS Code stopping responding. If these checks fail, it goes back to the previous version.
 - Finally, running tabs restart with the new version. Suspended tabs start with the new version the next time you open them.
 - Only the one previous version of code-server is kept. To go back by hand, set `codeServerVersion` in the settings file to the previous version and restart.

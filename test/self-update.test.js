@@ -349,6 +349,26 @@ test('a found version is offered, downloaded on request, and swapped in when the
   assert.deepEqual(calls, [['swap', '/s', '0.6.0', false]]);
 });
 
+test('the download of a new version reports the part done, and the zip\'s check and extracting report none', async () => {
+  const states = [];
+  const { update } = service({
+    stage: async (_release, onProgress) => {
+      onProgress(30, 120);
+      states.push(update.state);
+      onProgress(120, 120);
+      states.push(update.state);
+      return { staged: '/s', container: '/c' };
+    },
+  });
+  await update.check();
+  await update.start();
+  assert.deepEqual(states.map(({ status, detail, progress }) => ({ status, detail, progress })), [
+    { status: 'downloading', detail: '30 / 120 MB', progress: 0.25 },
+    { status: 'downloading', detail: '', progress: undefined },
+  ]);
+  assert.equal(update.state.status, 'ready');
+});
+
 test('restarting waits for the busy tabs, can be canceled, and then quits to relaunch', async () => {
   let busy = ['repo-a'];
   let rounds = 0;

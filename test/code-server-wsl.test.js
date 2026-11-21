@@ -155,6 +155,29 @@ test('a failed WSL sync does not hold up the next one', async (t) => {
   assert.equal(f.events.at(-1), 'read acme.one');
 });
 
+test('the download of code-server for WSL reports the part done before extracting', async (t) => {
+  const dir = tempDir(t);
+  const archive = path.join(dir, 'code-server.tar.gz');
+  fs.writeFileSync(archive, 'archive');
+  const progress = [];
+  const manager = {
+    distro: 'Ubuntu', arch: 'amd64', base: '/home/me/.worktabs', version: () => '4.146.0',
+    download: async ({ onProgress }) => { onProgress(59, 236); onProgress(236, 236); return archive; },
+    wsl: { execDirect: async (_command, _args, { input }) => {
+      const closed = new Promise((resolve) => input.once('close', resolve));
+      input.destroy();
+      await closed;
+    } },
+  };
+  await WslCodeServerManager.prototype.installCodeServer.call(manager, (text, part) => progress.push([text, part]));
+  assert.deepEqual(progress, [
+    ['Downloading code-server 4.146.0 for WSL… 59 / 236 MB', 0.25],
+    ['Downloading code-server 4.146.0 for WSL… 236 / 236 MB', 1],
+    ['Extracting code-server 4.146.0 in WSL Ubuntu…', undefined],
+  ]);
+  assert.equal(fs.existsSync(archive), false);
+});
+
 test('an update syncs the WSL extensions after a starting tab has, and still replaces them', async (t) => {
   const f = distro(t, { windows: [['acme.one', '2.0.0']], extensions: ['acme.one', 'anthropic.claude-code'], unpinnedExtensions: ['anthropic.claude-code'] });
   const start = f.manager.start('a', FOLDER);

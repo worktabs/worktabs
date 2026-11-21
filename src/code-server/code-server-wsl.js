@@ -22,6 +22,7 @@ const {
 } = require('./code-server-launch');
 const { hookSettings } = require('../conversations/hooks');
 const { t } = require('../i18n');
+const { downloadReporter } = require('../util');
 const { parseWslPath, shellQuote, windowsPath, wslDistro } = require('../wsl/wsl');
 
 // `uname -m` -> the architecture in code-server's release names.
@@ -179,8 +180,9 @@ class WslCodeServerManager extends InstanceManager {
 
   // Gets the distribution ready for the tabs: code-server there (downloaded first when
   // `install`; without it, resolves false when code-server is missing), the agent running, and
-  // the claude wrapper and the hook settings written. onProgress(text) tells what takes long.
-  /** @param {{ install?: boolean, onProgress?: (text: string) => void }} [options] */
+  // the claude wrapper and the hook settings written. onProgress(text, progress) tells what takes
+  // long, with the part done of a download whose size is known.
+  /** @param {{ install?: boolean, onProgress?: (text: string, progress?: number | null) => void }} [options] */
   async prepare({ install = true, onProgress = () => {} } = {}) {
     while (this.preparing) await this.preparing.catch(() => {});
     if (this.ready()) return true;
@@ -235,16 +237,10 @@ class WslCodeServerManager extends InstanceManager {
   async installCodeServer(onProgress) {
     const version = this.version();
     const name = `code-server-${version}-linux-${this.arch}`;
-    let shown = 0;
     const archive = await this.download({
       version,
       name,
-      onProgress: (mb, totalMb) => {
-        if (Date.now() - shown < 1000) return;
-        shown = Date.now();
-        const of = totalMb ? ` / ${totalMb.toFixed(0)} MB` : ' MB';
-        onProgress(t('Downloading code-server {version} for WSL… {progress}', { version, progress: `${mb.toFixed(0)}${of}` }));
-      },
+      onProgress: downloadReporter((size, progress) => onProgress(t('Downloading code-server {version} for WSL… {progress}', { version, progress: size }), progress)),
     });
     onProgress(t('Extracting code-server {version} in WSL {distro}…', { version, distro: this.distro }));
     // Extracted beside its place first, so a release cut short never looks installed.
@@ -367,7 +363,8 @@ class WslCodeServerManager extends InstanceManager {
 
   // Brings the distribution to what an update installed on Windows: the code-server release and
   // the extension versions. Only for a distribution in use in this run. Its sync waits for that of
-  // a tab starting meanwhile (syncExtensions).
+  // a tab starting meanwhile (syncExtensions). onProgress as for prepare.
+  /** @param {(text: string, progress?: number | null) => void} onProgress */
   async applyUpdate(onProgress) {
     if (!this.home) return;
     await this.prepare({ install: true, onProgress });
@@ -379,13 +376,14 @@ class WslCodeServerManager extends InstanceManager {
   }
 
   // As CodeServerManager.start, for a folder in this distribution (its UNC path).
-  // onProgress(text) tells what takes long: downloading code-server, installing extensions.
+  // onProgress(text, progress) tells what takes long: downloading code-server (with the part
+  // done), installing extensions.
   // `owner` follows the start through a port retry and back with its exit event.
   /**
    * @param {string} tabId
    * @param {string} folder
    * @param {number} [preferredPort]
-   * @param {{ onProgress?: (text: string) => void, shareSettings?: Function, avoid?: Set<number>, owner?: any }} [options]
+   * @param {{ onProgress?: (text: string, progress?: number | null) => void, shareSettings?: Function, avoid?: Set<number>, owner?: any }} [options]
    */
   async start(tabId, folder, preferredPort = 0, { onProgress = () => {}, shareSettings = null, avoid = new Set(), owner = null } = {}) {
     this.stop(tabId);
