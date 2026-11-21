@@ -41,7 +41,7 @@ function setup(overrides = {}) {
     startOptions: (tab) => ({ shareSettings: tab.repo }),
     connect: async (tab) => events.push(['connect', tab.id]),
     navigate: (tab, url) => events.push(['navigate', tab.id, url]),
-    placeholder: (tab, state, detail) => events.push(['placeholder', tab.id, state, detail]),
+    placeholder: (tab, state, detail, progress) => events.push(['placeholder', tab.id, state, detail, ...(progress === undefined ? [] : [progress])]),
     exitError: (code) => `exit ${code}`,
     cleanup: (tab, options) => {
       events.push(['cleanup', tab.id, options.keepRows]);
@@ -272,6 +272,27 @@ test('closing during git lookup releases the next start without waiting for old 
   assert.equal(old.branch, null);
   assert.equal(replacement.repo, null);
   assert.ok(events.slice(before).every(([name]) => name !== 'used'));
+});
+
+test('a starting tab\'s page shows what its server reports, with the part done when known', async () => {
+  const { lifecycle, manager, starts, events, open } = setup();
+  const result = deferred();
+  const originalStart = manager.start;
+  manager.start = async (...args) => {
+    await originalStart(...args);
+    return result.promise;
+  };
+  const tab = open('a');
+  const pending = lifecycle.start(tab);
+  await flush();
+  starts[0].options.onProgress('Preparing WSL Ubuntu…');
+  starts[0].options.onProgress('Downloading code-server 4.146.0 for WSL… 21 / 210 MB', 0.1);
+  assert.deepEqual(events.filter(([name, , state]) => name === 'placeholder' && state === 'starting').slice(-2), [
+    ['placeholder', tab.id, 'starting', 'Preparing WSL Ubuntu…'],
+    ['placeholder', tab.id, 'starting', 'Downloading code-server 4.146.0 for WSL… 21 / 210 MB', 0.1],
+  ]);
+  result.resolve({ port: 4100, cookie: {} });
+  await pending;
 });
 
 test('a reopened tab waits for the old server preparation and its final stop', async () => {

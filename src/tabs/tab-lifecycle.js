@@ -139,8 +139,8 @@ class TabLifecycle {
         ...this.deps.startOptions(tab),
         avoid: this.ports.reserved(tab.id),
         owner: run,
-        onProgress: (detail) => {
-          if (this.currentRun(run)) this.deps.placeholder(tab, 'starting', detail);
+        onProgress: (detail, progress) => {
+          if (this.currentRun(run)) this.deps.placeholder(tab, 'starting', detail, progress);
         },
       });
       if (!this.currentRun(run)) return;

@@ -15,12 +15,13 @@ function wrapperProblem({ agents, platform, wrapExe, exists, error }) {
 }
 
 // Resolves the code-server manager of the tabs once code-server and the extensions are ready, or
-// null when one of them could not be. `show(title, detail)`: the page without tabs. `startup`:
-// the StartupGate. `ensureCodeServer({ version, onProgress, onExtract })`: the folder of
-// code-server, downloaded and extracted when needed (install.js). `createServers(dir)`: the
-// CodeServerManager. `made(servers)`: what may use it before the extensions are ready (the
-// control port). `wrapper()`: wrapperProblem. `specs()`: the extensions to install. `changed()`:
-// the side bar is to show the failure.
+// null when one of them could not be. `show(title, detail, progress)`: the page without tabs, with
+// the part done of the download or the extracting (placeholder.js). `startup`: the StartupGate.
+// `ensureCodeServer({ version, onProgress, onExtract })`: the folder of code-server, downloaded
+// and extracted when needed (install.js). `createServers(dir)`: the CodeServerManager.
+// `made(servers)`: what may use it before the extensions are ready (the control port).
+// `wrapper()`: wrapperProblem. `specs()`: the extensions to install. `changed()`: the side bar is
+// to show the failure.
 async function prepareCodeServer({ config, show, startup, ensureCodeServer, createServers, made, wrapper, specs, changed }) {
   let codeServerDir = config.codeServerDir;
   if (!codeServerDir) {
@@ -28,7 +29,7 @@ async function prepareCodeServer({ config, show, startup, ensureCodeServer, crea
       show('Worktabs', t('Preparing code-server {version}…', { version: config.codeServerVersion }));
       codeServerDir = await ensureCodeServer({
         version: config.codeServerVersion,
-        ...codeServerProgress(config.codeServerVersion, (detail) => show('Worktabs', detail)),
+        ...codeServerProgress(config.codeServerVersion, (detail, progress) => show('Worktabs', detail, progress)),
       });
     } catch (error) {
       startup.fail(new Error(t('Could not prepare code-server: {error}', { error: error.message })));
