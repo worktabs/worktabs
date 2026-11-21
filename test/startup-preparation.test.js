@@ -25,7 +25,7 @@ function setup({ config = {}, ensure, install = null, extensions, wrapper = null
   };
   const run = () => prepareCodeServer({
     config: { codeServerVersion: '4.0.0', file: '/data/config.json', ...config },
-    show: (title, detail) => shown.push([title, detail]),
+    show: (title, detail, progress) => shown.push(progress === undefined ? [title, detail] : [title, detail, progress]),
     startup,
     ensureCodeServer: ensure || (async (options) => { calls.push(['ensure', options.version]); return '/data/code-server'; }),
     createServers: (dir) => { calls.push(['create', dir]); return servers; },
@@ -45,6 +45,25 @@ test('code-server is downloaded, the extensions installed, and the gate opened',
   assert.deepEqual(shown.map(([, detail]) => detail), [
     'Preparing code-server 4.0.0…', 'Checking the extensions…', 'Open a worktree from the side bar on the left.',
   ]);
+});
+
+test('the page without tabs shows how far the download and the extracting of code-server have gone', async () => {
+  const { run, shown } = setup({
+    ensure: async ({ onProgress, onExtract }) => {
+      onProgress(59, 236);
+      onProgress(236, 236);
+      onExtract(118, 236);
+      return '/data/code-server';
+    },
+  });
+  await run();
+  assert.deepEqual(shown.slice(0, 4), [
+    ['Worktabs', 'Preparing code-server 4.0.0…'],
+    ['Worktabs', 'Downloading code-server 4.0.0… 59 / 236 MB', 0.25],
+    ['Worktabs', 'Downloading code-server 4.0.0… 236 / 236 MB', 1],
+    ['Worktabs', 'Extracting code-server 4.0.0…', 0.5],
+  ]);
+  assert.deepEqual(shown[4], ['Worktabs', 'Checking the extensions…']);
 });
 
 test('a code-server folder in the settings is used as it is', async () => {

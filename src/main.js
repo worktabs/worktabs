@@ -297,9 +297,9 @@ function tabIdFor(folder) {
   return `t${hash.slice(0, 10)}`;
 }
 
-// A page in the colors of the side bar's theme.
-function placeholderUrl(title, detail = '') {
-  return placeholderPage(title, detail, theme.current(), language());
+// A page in the colors of the side bar's theme. `progress`: placeholder.js.
+function placeholderUrl(title, detail = '', progress = null) {
+  return placeholderPage(title, detail, theme.current(), language(), progress);
 }
 
 // ---- State shown in the tab bar ----------------------------------------------------------
@@ -468,9 +468,9 @@ function tabDependencies() {
   };
 }
 
-function showTabPlaceholder(tab, state, detail) {
-  const page = tabPlaceholder(tab.name, state, detail, startup.status === 'pending');
-  tab.view.webContents.loadURL(placeholderUrl(page.title, page.detail));
+function showTabPlaceholder(tab, state, detail, progress) {
+  const page = tabPlaceholder(tab.name, state, detail, startup.status === 'pending', progress);
+  tab.view.webContents.loadURL(placeholderUrl(page.title, page.detail, page.progress));
 }
 
 function openTab(folder, options) {
@@ -1171,7 +1171,7 @@ app.whenReady().then(async () => {
   sessions.on('change', onSessionsChange);
   sessions.on('restore-failed', conversationOpening.restoreFailed);
 
-  const showEmpty = (title, detail) => emptyView.webContents.loadURL(placeholderUrl(title, detail));
+  const showEmpty = (title, detail, progress) => emptyView.webContents.loadURL(placeholderUrl(title, detail, progress));
   const servers = await prepareCodeServer({
     config, show: showEmpty, startup,
     ensureCodeServer: (options) => ensureCodeServer({ dataDir, ...options }),
