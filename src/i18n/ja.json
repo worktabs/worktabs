@@ -281,6 +281,7 @@
   "Week": "週",
   "Weekly limit": "週の枠",
   "{name}: {percent}% used": "{name}: {percent}% 使用",
+  "Even pace: {percent}% by now": "一定ペースなら今 {percent}%",
   "Resets {time}": "{time} にリセット",
   "Received {time}": "{time} に受け取った値",
   "Month": "月",

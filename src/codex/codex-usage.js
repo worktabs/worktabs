@@ -1,6 +1,6 @@
 const { quotaWindow } = require('./codex-quota');
 const { t } = require('../i18n');
-const { timeText } = require('../sidebar/time');
+const { timeText, windowPace } = require('../sidebar/time');
 
 const STALE_AFTER = 15 * 60 * 1000;
 const SUBSCRIPTION = new Set(['chatgpt', 'chatgptAuthTokens']);
@@ -138,15 +138,18 @@ class CodexUsageTracker {
         const expired = window?.resetsAt && window.resetsAt * 1000 <= now;
         const known = window?.usedPercent !== null && window?.usedPercent !== undefined && window?.resetsAt && !stale && !expired;
         const percent = known ? Math.round(window.usedPercent) : null;
+        // A window without a reported length gets no pace: its start is unknown.
+        const pace = known ? windowPace(window.resetsAt, window.windowDurationMins, now) : null;
         const resetTime = window.resetsAt && !expired ? timeText(new Date(window.resetsAt * 1000), now) : '';
         const resets = resetTime ? t('Resets {time}', { time: resetTime }) : '';
         const detail = stale ? t('Stale usage') : expired ? t('Waiting for refresh') : !known ? t('Usage unavailable') : '';
         const label = durationLabel(window?.windowDurationMins, key);
         const name = bucket.name || bucket.id;
         const title = [t('Codex usage'), name, known ? t('{name}: {percent}% used', { name: label, percent }) : detail,
+          pace !== null ? t('Even pace: {percent}% by now', { percent: Math.round(pace) }) : '',
           window?.resetsAt ? t('Resets {time}', { time: timeText(new Date(window.resetsAt * 1000), now, { weekday: true }) }) : '',
           t('Received {time}', { time: timeText(new Date(bucket.receivedAt), now) }), refreshTitle].filter(Boolean).join('\n');
-        windows.push({ key: `${bucket.id}:${key}`, bucket: name, label, percent,
+        windows.push({ key: `${bucket.id}:${key}`, bucket: name, label, percent, pace,
           level: !known ? 'unknown' : window.usedPercent >= 100 ? 'over' : window.usedPercent >= 80 ? 'warn' : 'ok', resets, resetTime, detail, title });
       }
     }

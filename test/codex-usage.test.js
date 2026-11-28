@@ -133,6 +133,8 @@ test('absent Codex windows are omitted; invalid, stale and expired values stay u
   const [first] = tracker.view(NOW).windows;
   assert.deepEqual([first.label, first.percent, first.level], ['15 min', 25, 'ok']);
   assert.match(first.title, /25% used\nResets .*\nReceived/);
+  // A 15-minute window that resets in an hour: where it started is not known.
+  assert.equal(first.pace, null);
   assert.equal(tracker.view(NOW).windows.length, 1);
   assert.match(tracker.view(NOW).received, /^Received /);
   assert.equal(tracker.view(NOW + STALE_AFTER).windows[0].percent, null);
@@ -154,6 +156,11 @@ test('Codex uses reported durations, warning/full states and independent buckets
   const view = tracker.view(NOW);
   assert.deepEqual(view.windows.slice(0, 3).map((w) => [w.label, w.percent, w.level]), [['5 hours', 80, 'warn'], ['Week', 100, 'over'], ['90 min', 103, 'over']]);
   assert.equal(view.windows[2].bucket, 'Other quota');
+  // Each resets in an hour: how much of its reported length has passed.
+  assert.deepEqual(view.windows.slice(0, 3).map((w) => w.pace), [80, 99.4, 33.3]);
+  assert.match(view.windows[0].title, /80% used\nEven pace: 80% by now\nResets /);
+  assert.equal(tracker.view(NOW + STALE_AFTER).windows[0].pace, null);
+  assert.doesNotMatch(tracker.view(NOW + STALE_AFTER).windows[0].title, /Even pace/);
   tracker.take('a', '1', usage(NOW + 1, 2, { complete: false }), NOW + 1);
   assert.equal(tracker.view(NOW + 1).windows.length, 2);
   tracker.take('a', '1', usage(NOW + 2, 3), NOW + 2);

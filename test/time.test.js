@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { setLanguage } = require('../src/i18n');
-const { elapsedText, sinceText, timeText } = require('../src/sidebar/time');
+const { elapsedText, sinceText, timeText, windowPace } = require('../src/sidebar/time');
 
 // Local times, so the tests hold in any time zone.
 const NOW = new Date(2026, 8, 29, 13, 20).getTime();
@@ -65,4 +65,20 @@ test('in Japanese, the times read as they did before the UI was in English', (t)
   assert.equal(elapsedText('waiting', ago(24 * 60), NOW), '1 日');
   assert.equal(elapsedText('done', ago(5), NOW), '5 分前');
   assert.equal(sinceText('done', new Date(2026, 8, 28, 22, 0).getTime(), NOW), '昨日 22:00 から');
+});
+
+test('windowPace says how much of a window has passed, from its reset and its length', () => {
+  const reset = (minutes) => (NOW + minutes * MINUTE) / 1000;
+  // A 5-hour window that resets in 2.5 hours is half over.
+  assert.equal(windowPace(reset(150), 300, NOW), 50);
+  assert.equal(windowPace(reset(100), 300, NOW), 66.7);
+  assert.equal(windowPace(reset(300), 300, NOW), 0);
+  assert.equal(windowPace(reset(1), 7 * 24 * 60, NOW), 100);
+  // Nothing to place: no length, a reset that has passed, or one further away than the window is long.
+  assert.equal(windowPace(reset(150), null, NOW), null);
+  assert.equal(windowPace(reset(150), 0, NOW), null);
+  assert.equal(windowPace(reset(0), 300, NOW), null);
+  assert.equal(windowPace(reset(-10), 300, NOW), null);
+  assert.equal(windowPace(reset(301), 300, NOW), null);
+  assert.equal(windowPace(null, 300, NOW), null);
 });

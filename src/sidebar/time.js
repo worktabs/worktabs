@@ -1,6 +1,6 @@
-// Times as the side bar shows them, apart from the page so they can be tested: when Claude's
-// usage windows reset (usage.js, in the main process), and how long each conversation has been
-// in its state (sidebar.js). The page loads this as a plain script; the main process and the
+// Times as the side bar shows them, apart from the page so they can be tested: when the usage
+// windows reset and how far into them we are (usage.js and codex-usage.js, in the main process),
+// and how long each conversation has been in its state (sidebar.js). The page loads this as a plain script; the main process and the
 // tests require it.
 
 // In the main process and the tests, the UI language's `t`; a page has its own (src/i18n/page.js).
@@ -55,4 +55,15 @@ function sinceText(state, since, now) {
   return t('since {time}', { time: timeText(new Date(since), now) });
 }
 
-if (typeof module === 'object') module.exports = { elapsedText, sinceText, timeText };
+// How much of a usage window has passed at `now`, in percent to a tenth: where its usage would be
+// if it went up evenly and reached 100% at the reset. A window starts its length (`minutes`)
+// before its reset (`resetsAt`, unix seconds). null when the length is unknown, or when `now` is
+// not inside the window: it has reset, or the reset is further away than the window is long.
+function windowPace(resetsAt, minutes, now) {
+  const length = minutes * 60000;
+  const left = resetsAt * 1000 - now;
+  if (!(length > 0) || !(left > 0) || left > length) return null;
+  return Math.round((1 - left / length) * 1000) / 10;
+}
+
+if (typeof module === 'object') module.exports = { elapsedText, sinceText, timeText, windowPace };

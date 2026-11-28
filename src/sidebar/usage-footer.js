@@ -1,5 +1,5 @@
 // The subscription usage at the foot of the side bar: Claude's and Codex's windows, each with
-// how much of it is used and when it resets. Keeps the provider and the meaning of the percentage
+// how much of it is used, how much of it has passed, and when it resets. Keeps the provider and the meaning of the percentage
 // visible, including at narrow widths.
 
 function createUsageFooter({ element, dom, t }) {
@@ -32,6 +32,13 @@ function createUsageFooter({ element, dom, t }) {
           const fill = el('span', 'usage-fill');
           fill.style.width = `${Math.min(window.percent, 100)}%`;
           bar.append(fill);
+          // A line where an even pace to the reset would be now: a fill short of it leaves room,
+          // a fill past it reaches the limit before the reset.
+          if (Number.isFinite(window.pace)) {
+            const pace = el('span', 'usage-pace');
+            pace.style.left = `${window.pace}%`;
+            bar.append(pace);
+          }
         }
         const reset = el('span', 'usage-reset', window.detail || (window.resetTime ? `↻ ${window.resetTime}` : ''));
         reset.setAttribute('aria-label', window.detail || window.resets || '');

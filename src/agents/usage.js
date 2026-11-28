@@ -3,13 +3,14 @@
 // the background reads (usage-refresh.js), which also bring the monthly spend limit.
 const fs = require('fs');
 const { t, language } = require('../i18n');
-const { timeText } = require('../sidebar/time');
+const { timeText, windowPace } = require('../sidebar/time');
 
-// The windows the side bar shows, in its order, with their short label and their name.
-// seven_day_overage_included, a weekly bucket that only some accounts have, is left out.
+// The windows the side bar shows, in its order, with their length in minutes (claude reports
+// only when they reset), their short label and their name. seven_day_overage_included, a weekly
+// bucket that only some accounts have, is left out.
 const WINDOWS = [
-  { key: 'five_hour', words: () => ({ label: t('5 hours'), name: t('5-hour limit') }) },
-  { key: 'seven_day', words: () => ({ label: t('Week'), name: t('Weekly limit') }) },
+  { key: 'five_hour', minutes: 5 * 60, words: () => ({ label: t('5 hours'), name: t('5-hour limit') }) },
+  { key: 'seven_day', minutes: 7 * 24 * 60, words: () => ({ label: t('Week'), name: t('Weekly limit') }) },
 ];
 // From this share of a window on, it shows as a warning.
 const WARN_AT = 0.8;
@@ -126,7 +127,7 @@ class UsageTracker {
 
   providerView(now = Date.now()) {
     const windows = this.view(now).map((window) => now - this.receivedAt(window.key) < STALE_AFTER ? window : {
-      ...window, percent: null, level: 'unknown', detail: t('Stale usage'),
+      ...window, percent: null, pace: null, level: 'unknown', detail: t('Stale usage'),
       title: [t('Stale usage'), window.resets, window.received].filter(Boolean).join('\n'),
     });
     // NO_LIMIT is spelled out for the translation check, which reads t()'s string literals.
@@ -151,20 +152,25 @@ function spendOf({ used, limit, places, currency, reached }, at) {
   return { used, limit, places, currency, reached, at };
 }
 
-// What the side bar shows for each window that has not reset: { key, label, percent, level,
-// resets, title }. level is 'ok', 'warn' (from WARN_AT) or 'over' (the cap reached).
+// What the side bar shows for each window that has not reset: { key, label, percent, pace, level,
+// resets, title }. pace is how much of the window has passed (windowPace), or null. level is
+// 'ok', 'warn' (from WARN_AT) or 'over' (the cap reached).
 function usageView(windows, now = Date.now()) {
-  return WINDOWS.filter(({ key }) => windows[key] && windows[key].resetsAt * 1000 > now).map(({ key, words }) => {
+  return WINDOWS.filter(({ key }) => windows[key] && windows[key].resetsAt * 1000 > now).map(({ key, minutes, words }) => {
     const { label, name } = words();
     const { utilization, resetsAt, at } = windows[key];
     const percent = Math.round(utilization * 100);
+    const pace = windowPace(resetsAt, minutes, now);
     const resets = new Date(resetsAt * 1000);
-    const title = [t('{name}: {percent}% used', { name, percent }), t('Resets {time}', { time: timeText(resets, now, { weekday: true }) })];
+    const title = [t('{name}: {percent}% used', { name, percent })];
+    if (pace !== null) title.push(t('Even pace: {percent}% by now', { percent: Math.round(pace) }));
+    title.push(t('Resets {time}', { time: timeText(resets, now, { weekday: true }) }));
     if (Number.isFinite(at)) title.push(t('Received {time}', { time: timeText(new Date(at), now) }));
     return {
       key,
       label,
       percent,
+      pace,
       level: utilization >= 1 ? 'over' : utilization >= WARN_AT ? 'warn' : 'ok',
       resets: t('Resets {time}', { time: timeText(resets, now) }),
       resetTime: timeText(resets, now),
