@@ -2,6 +2,14 @@
 
 Built with [git-cliff](https://git-cliff.org) from the prefixes of the commits ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)), not written by hand. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-11-28
+
+### Features
+- mark the even pace on each usage bar ([#101](https://github.com/worktabs/worktabs/pull/101))
+- show download progress as a bar on the pages without tabs ([#98](https://github.com/worktabs/worktabs/pull/98))
+- show how far extracting code-server has gone ([#97](https://github.com/worktabs/worktabs/pull/97))
+- fill the update cards' bar by how much of a download is done ([#96](https://github.com/worktabs/worktabs/pull/96))
+
 ## [0.12.1] - 2026-11-21
 
 ### Bug fixes
