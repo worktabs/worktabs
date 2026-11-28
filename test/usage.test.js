@@ -33,7 +33,7 @@ test('Claude provider stays visible before data, after reset and with stale valu
   tracker.refresh({ windows: BOTH }, NOW, NOW);
   assert.deepEqual(tracker.providerView(NOW).windows.map((window) => window.percent), [42, 18]);
   const stale = tracker.providerView(NOW + 15 * 60000);
-  assert.ok(stale.windows.every((window) => window.percent === null && window.detail === 'Stale usage'));
+  assert.ok(stale.windows.every((window) => window.percent === null && window.pace === null && window.detail === 'Stale usage'));
   tracker.expire(WEEK_RESET * 1000);
   assert.deepEqual(tracker.providerView(WEEK_RESET * 1000), { windows: [], status: 'Waiting for refresh' });
   // A read that worked but found no window is not a failed one.
@@ -69,27 +69,31 @@ test('usageView shows each window with its share and reset, orange from 80% and 
       key: 'five_hour',
       label: '5 hours',
       percent: 84,
+      // 10:00 to 15:00, at 13:20.
+      pace: 66.7,
       level: 'warn',
       resets: 'Resets 15:00',
       resetTime: '15:00',
       received: 'Received 13:05',
-      title: '5-hour limit: 84% used\nResets 15:00\nReceived 13:05',
+      title: '5-hour limit: 84% used\nEven pace: 67% by now\nResets 15:00\nReceived 13:05',
     },
     {
       key: 'seven_day',
       label: 'Week',
       percent: 18,
+      // 9/26 9:00 to 10/3 9:00, at 9/29 13:20.
+      pace: 45.4,
       level: 'ok',
       resets: 'Resets 10/3 9:00',
       resetTime: '10/3 9:00',
       received: 'Received 13:05',
-      title: 'Weekly limit: 18% used\nResets 10/3 (Sat) 9:00\nReceived 13:05',
+      title: 'Weekly limit: 18% used\nEven pace: 45% by now\nResets 10/3 (Sat) 9:00\nReceived 13:05',
     },
   ]);
   setLanguage('ja');
   t.after(() => setLanguage('en'));
   const [, week] = usageView(windows, NOW);
-  assert.deepEqual([week.label, week.resets, week.title], ['週', '10/3 9:00 にリセット', '週の枠: 18% 使用\n10/3（土）9:00 にリセット\n13:05 に受け取った値']);
+  assert.deepEqual([week.label, week.resets, week.title], ['週', '10/3 9:00 にリセット', '週の枠: 18% 使用\n一定ペースなら今 45%\n10/3（土）9:00 にリセット\n13:05 に受け取った値']);
   setLanguage('en');
   const over = usageView({ five_hour: { utilization: 1.03, resetsAt: FIVE_HOUR_RESET, at } }, NOW);
   assert.deepEqual([over[0].percent, over[0].level], [103, 'over']);

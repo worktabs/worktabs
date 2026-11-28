@@ -121,6 +121,9 @@ test('the footer distinguishes Claude, Codex and both, with used percentages and
   assert.equal(footer.querySelectorAll('.usage-row.warn').length, 2);
   assert.equal(footer.querySelectorAll('.usage-row.over').length, 1);
   assert.deepEqual(footer.querySelectorAll('.usage-fill').map((e) => e.style.width), ['84%', '80%', '100%']);
+  // The even pace on each known window: 4 of 5 hours and 7 days less an hour have passed.
+  assert.deepEqual(footer.querySelectorAll('.usage-pace').map((e) => e.style.left), ['80%', '80%', '99.4%']);
+  assert.match(footer.querySelector('.usage-row').title, /\nEven pace: 80% by now\n/);
   assert.equal(footer.querySelectorAll('.usage-reset').length, 4);
   assert.equal(footer.querySelectorAll('.usage-detail').length, 0);
   assert.equal(footer.querySelectorAll('.usage-received').length, 0);
@@ -147,6 +150,7 @@ test('the footer distinguishes Claude, Codex and both, with used percentages and
   assert.deepEqual(footer.querySelectorAll('.usage-heading').map((e) => e.textContent), ['Codex · Used']);
   update({ ...state, usage: [], codexUsage: codex.view(now + 15 * 60000) });
   assert.equal(footer.querySelectorAll('.usage-fill').length, 0);
+  assert.equal(footer.querySelectorAll('.usage-pace').length, 0);
   assert.match(footer.textContent, /Stale usage/);
   codex.refreshStatus = 'Usage unavailable';
   codex.refresh = { active: false, attemptAt: now + 14 * 60000, nextAt: now + 19 * 60000 };
@@ -180,6 +184,8 @@ test('the footer distinguishes Claude, Codex and both, with used percentages and
   assert.equal(footer.querySelectorAll('.usage-row.warn').length, 1);
   assert.equal(footer.querySelector('.usage-reset').textContent, '$85 / $100');
   assert.equal(footer.querySelector('.usage-reset').getAttribute('aria-label'), '$85 / $100');
+  // It has no reset time, so no even pace either.
+  assert.equal(footer.querySelectorAll('.usage-pace').length, 0);
   assert.match(footer.querySelector('.usage-row').title, /^Monthly spend: \$85\.00 of \$100\.00 used\nReceived /);
 });
 

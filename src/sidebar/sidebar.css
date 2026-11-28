@@ -1129,18 +1129,30 @@ main [role='tree'] {
 }
 
 .usage-bar {
+  position: relative;
   min-width: 0;
   height: 4px;
   border-radius: 2px;
   /* A track that shows on any theme's ground. */
   background: color-mix(in srgb, var(--text) 16%, transparent);
-  overflow: hidden;
 }
 
 .usage-fill {
   display: block;
   height: 100%;
+  border-radius: inherit;
   background: var(--usage);
+}
+
+/* The even pace: thin, and taller than the bar so it stays clear of the fill's end. The ground's
+   color on each side keeps it visible over the orange and the red. */
+.usage-pace {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px var(--bg);
 }
 
 .usage-percent {
